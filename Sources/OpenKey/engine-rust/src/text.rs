@@ -1,5 +1,5 @@
 use crate::{keys::*, tables::*};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub fn lookup<T: Copy + Default>(map: &[(u32, T)], key: u32) -> T {
     map.iter()
@@ -112,27 +112,60 @@ fn set_case(value: u32, upper: bool, code: usize) -> u32 {
     value
 }
 
+/// Macro names map to UTF-8 content. Lookups run on every word break, so the encoded names for
+/// the active code table are cached; every mutation goes through a method that clears the cache.
 #[derive(Default)]
-pub struct Macros(pub BTreeMap<String, String>);
+pub struct Macros {
+    entries: BTreeMap<String, String>,
+    index: Option<(usize, HashMap<Vec<u32>, String>)>,
+}
 impl Macros {
+    pub fn entries(&self) -> &BTreeMap<String, String> {
+        &self.entries
+    }
+    pub fn contains(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
+    pub fn remove(&mut self, key: &str) -> bool {
+        self.index = None;
+        self.entries.remove(key).is_some()
+    }
     pub fn add(&mut self, key: &str, value: &str) -> bool {
         // Keep persisted lengths representable by the existing OpenKey format.
         if key.is_empty()
             || key.len() > 255
             || value.len() > 65535
-            || (self.0.len() >= 65535 && !self.0.contains_key(key))
+            || (self.entries.len() >= 65535 && !self.entries.contains_key(key))
         {
             return false;
         }
-        self.0.insert(key.to_string(), value.to_string());
+        self.index = None;
+        self.entries.insert(key.to_string(), value.to_string());
         true
     }
-    pub fn find(&self, key: &[u32], code: usize, auto_caps: bool) -> Option<Vec<u32>> {
-        for (name, value) in &self.0 {
-            let encoded = encode(name, code);
-            if encoded == key {
-                return Some(encode(value, code));
+    /// Encoded name → content for `code`, keeping the first name in sorted order on collisions.
+    fn index(&mut self, code: usize) -> &HashMap<Vec<u32>, String> {
+        if self
+            .index
+            .as_ref()
+            .is_none_or(|(cached, _)| *cached != code)
+        {
+            let mut index = HashMap::with_capacity(self.entries.len());
+            for (name, value) in &self.entries {
+                index
+                    .entry(encode(name, code))
+                    .or_insert_with(|| value.clone());
             }
+            self.index = Some((code, index));
+        }
+        &self.index.as_ref().unwrap().1
+    }
+    pub fn find(&mut self, key: &[u32], code: usize, auto_caps: bool) -> Option<Vec<u32>> {
+        if self.entries.is_empty() {
+            return None;
+        }
+        if let Some(value) = self.index(code).get(key) {
+            return Some(encode(value, code));
         }
         if !auto_caps || key.is_empty() {
             return None;
@@ -142,24 +175,20 @@ impl Macros {
             return None;
         }
         let all_caps = key.len() > 1 && lowercase[1] != key[1];
-        for (name, value) in &self.0 {
-            if encode(name, code) == lowercase {
-                return Some(
-                    encode(value, code)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, x)| {
-                            if i == 0 || all_caps {
-                                set_case(x, true, code)
-                            } else {
-                                x
-                            }
-                        })
-                        .collect(),
-                );
-            }
-        }
-        None
+        let value = self.index(code).get(&lowercase)?;
+        Some(
+            encode(value, code)
+                .into_iter()
+                .enumerate()
+                .map(|(i, x)| {
+                    if i == 0 || all_caps {
+                        set_case(x, true, code)
+                    } else {
+                        x
+                    }
+                })
+                .collect(),
+        )
     }
     pub fn load(&mut self, bytes: &[u8]) -> bool {
         let Some(mut cursor) = Cursor::new(bytes) else {
@@ -184,8 +213,8 @@ impl Macros {
         true
     }
     pub fn save(&self, code: usize) -> Vec<u8> {
-        let mut out = (self.0.len() as u16).to_le_bytes().to_vec();
-        let mut entries: Vec<_> = self.0.iter().collect();
+        let mut out = (self.entries.len() as u16).to_le_bytes().to_vec();
+        let mut entries: Vec<_> = self.entries.iter().collect();
         entries.sort_by_cached_key(|(key, _)| encode(key, code));
         for (name, value) in entries {
             out.push(name.len() as u8);
@@ -198,7 +227,7 @@ impl Macros {
     pub fn export(&self) -> String {
         let mut text =
             String::from(";Compatible OpenKey Macro Data file for UniKey*** version=1 ***\n");
-        for (key, value) in &self.0 {
+        for (key, value) in &self.entries {
             text.push_str(key);
             text.push(':');
             text.push_str(value);
@@ -208,7 +237,10 @@ impl Macros {
     }
     pub fn import(&mut self, text: &str, append: bool) -> bool {
         let mut next = if append {
-            Self(self.0.clone())
+            Self {
+                entries: self.entries.clone(),
+                index: None,
+            }
         } else {
             Self::default()
         };
@@ -234,7 +266,7 @@ impl Macros {
             } else {
                 (key.to_string(), value)
             };
-            if !next.0.contains_key(&key) && !next.add(&key, value) {
+            if !next.contains(&key) && !next.add(&key, value) {
                 return false;
             }
         }

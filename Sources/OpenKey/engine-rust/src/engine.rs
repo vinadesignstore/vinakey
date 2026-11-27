@@ -1,6 +1,36 @@
 use crate::text::{character_code, lookup};
 use crate::{keys::*, tables::*, Config};
 
+/// `vKeyHookState::code`, matching the C++ `HoolCodeState` values.
+pub mod code {
+    /// Pass the key through unchanged.
+    pub const DO_NOTHING: u8 = 0;
+    /// Delete `backspaces` characters and send `chars`.
+    pub const WILL_PROCESS: u8 = 1;
+    /// Like `WILL_PROCESS`, then also send the typed key.
+    pub const RESTORE: u8 = 3;
+    /// Delete the macro key and send `macro_data`, then the typed key.
+    pub const REPLACE_MACRO: u8 = 4;
+    /// Restore an invalid word at a break key, then start a new session.
+    pub const RESTORE_AND_START_NEW_SESSION: u8 = 5;
+}
+/// `vKeyHookState::extCode`, read by the macOS event tap.
+pub mod ext {
+    pub const WORD_START: u8 = 0;
+    pub const BREAK: u8 = 1;
+    pub const DELETE: u8 = 2;
+    pub const NORMAL: u8 = 3;
+    /// Do not send the empty-character browser workaround.
+    pub const NO_EMPTY_CHAR: u8 = 4;
+}
+/// `Config::input_type`.
+pub mod input {
+    pub const TELEX: i32 = 0;
+    pub const VNI: i32 = 1;
+    pub const SIMPLE_TELEX_1: i32 = 2;
+    pub const SIMPLE_TELEX_2: i32 = 3;
+}
+
 #[derive(Default, Clone)]
 pub struct Hook {
     pub code: u8,
@@ -317,7 +347,7 @@ impl Engine {
         }
     }
     fn save_word(&mut self) {
-        if self.hook.code != 4 {
+        if self.hook.code != code::REPLACE_MACRO {
             if self.len > 0 {
                 for chunk in self.long_word.chunks(32) {
                     self.history.push(chunk.to_vec());
@@ -386,7 +416,7 @@ impl Engine {
         !(start > 0 && self.ch(start - 1) == self.ch(start))
     }
     fn processing(&self) -> [u32; 11] {
-        if self.cfg.input_type == 1 {
+        if self.cfg.input_type == input::VNI {
             [
                 KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0,
             ]
@@ -500,7 +530,7 @@ impl Engine {
     }
     fn insert_mark(&mut self, mask: u32, modify: bool) -> usize {
         if modify {
-            self.hook.code = 1;
+            self.hook.code = code::WILL_PROCESS;
         }
         self.hook.backspaces = 0;
         self.hook.count = 0;
@@ -511,7 +541,7 @@ impl Engine {
         let duplicate = self.w(pos) & mask != 0;
         if duplicate {
             if modify {
-                self.hook.code = 3;
+                self.hook.code = code::RESTORE;
             }
             self.disabled = true;
         }
@@ -563,13 +593,13 @@ impl Engine {
             }
         }
         if changed {
-            if self.hook.code == 0 {
-                self.hook.code = 1;
+            if self.hook.code == code::DO_NOTHING {
+                self.hook.code = code::WILL_PROCESS;
             }
             self.output_suffix(start);
             self.hook.count = (self.len - start) as u8;
             self.hook.backspaces = ((self.len - start) as i32 + delta).max(0) as u8;
-            self.hook.ext = 4;
+            self.hook.ext = ext::NO_EMPTY_CHAR;
         }
     }
     fn insert_double(&mut self, data: u32, is_d: bool) {
@@ -580,13 +610,13 @@ impl Engine {
                 }
             }
         }
-        self.hook.code = 1;
+        self.hook.code = code::WILL_PROCESS;
         self.hook.backspaces = 0;
         for i in (0..self.len).rev() {
             self.hook.backspaces += 1;
             if self.ch(i) == data {
                 if self.w(i) & TONE_MASK != 0 {
-                    self.hook.code = 3;
+                    self.hook.code = code::RESTORE;
                     self.word[i] &= !TONE_MASK;
                     self.hook.chars[self.len - 1 - i] = self.word[i];
                     if is_d || data != KEY_O {
@@ -614,7 +644,7 @@ impl Engine {
         for value in self.word.iter_mut().take(e + 1).skip(s) {
             *value &= !TONE_MASK;
         }
-        self.hook.code = 1;
+        self.hook.code = code::WILL_PROCESS;
         if count > 1 {
             self.hook.backspaces = (self.len - s) as u8;
             self.hook.count = self.hook.backspaces;
@@ -623,7 +653,7 @@ impl Engine {
             if (self.w(s) & TONEW_MASK != 0 && self.w(s + 1) & TONEW_MASK != 0)
                 || (self.w(s) & TONEW_MASK != 0 && [KEY_I, KEY_A].contains(&b))
             {
-                self.hook.code = 3;
+                self.hook.code = code::RESTORE;
                 self.disabled = true;
                 for i in s..self.len {
                     self.word[i] &= !TONEW_MASK;
@@ -656,7 +686,7 @@ impl Engine {
                     self.word[s + 1] |= TONEW_MASK;
                 } else {
                     self.disabled = true;
-                    self.hook.code = 0;
+                    self.hook.code = code::DO_NOTHING;
                     self.output_suffix(s);
                     return false;
                 }
@@ -673,11 +703,11 @@ impl Engine {
                         if self.ch(i) == KEY_U {
                             self.word[i] = KEY_W | (self.w(i) & CAPS_MASK);
                         } else if self.ch(i) == KEY_O {
-                            self.hook.code = 3;
+                            self.hook.code = code::RESTORE;
                             self.word[i] = KEY_O | (self.w(i) & CAPS_MASK);
                         }
                     } else {
-                        self.hook.code = 3;
+                        self.hook.code = code::RESTORE;
                         self.word[i] &= !TONEW_MASK;
                     }
                     self.hook.chars[self.len - 1 - i] = self.word[i];
@@ -696,34 +726,36 @@ impl Engine {
     fn standalone(&mut self, data: u32, caps: bool, target: u32) {
         if self.len > 0 && self.ch(self.len - 1) == target && self.w(self.len - 1) & TONEW_MASK != 0
         {
-            self.hook.code = 1;
+            self.hook.code = code::WILL_PROCESS;
             self.hook.backspaces = 1;
             self.hook.count = 1;
             self.word[self.len - 1] = data | if caps { CAPS_MASK } else { 0 };
             self.hook.chars[0] = self.character(self.w(self.len - 1));
             return;
         }
-        let allowed = (self.len > 0 && self.ch(self.len - 1) == KEY_U && target == KEY_O)
-            || self.len == 0
-            || (self.len == 1 && !_standaloneWbad.contains(&self.ch(0)))
-            || (self.len == 2
-                && _doubleWAllowed
+        // Mirrors C++ checkForStandaloneChar. Only u+ơ keeps insertKey's default spelling check.
+        let (key, allowed, check) =
+            if self.len > 0 && self.ch(self.len - 1) == KEY_U && target == KEY_O {
+                (target, true, true)
+            } else if self.len == 0 {
+                (data, true, false)
+            } else if self.len == 1 {
+                let bad = _standaloneWbad.contains(&self.ch(0));
+                (data, !bad, bad)
+            } else if self.len == 2 {
+                let ok = _doubleWAllowed
                     .iter()
-                    .any(|p| p[0] == self.ch(0) && p[1] == self.ch(1)));
-        self.insert(
-            if allowed && target == KEY_O && self.len > 0 && self.ch(self.len - 1) == KEY_U {
-                target
+                    .any(|p| p[0] == self.ch(0) && p[1] == self.ch(1));
+                (data, ok, !ok)
             } else {
-                data
-            },
-            caps,
-            !allowed,
-        );
+                (data, false, true)
+            };
+        self.insert(key, caps, check);
         if allowed {
-            self.hook.code = 1;
+            self.hook.code = code::WILL_PROCESS;
             self.hook.backspaces = 0;
             self.hook.count = 1;
-            self.hook.ext = 4;
+            self.hook.ext = ext::NO_EMPTY_CHAR;
             self.word[self.len - 1] =
                 target | TONEW_MASK | STANDALONE_MASK | if caps { CAPS_MASK } else { 0 };
             self.hook.chars[0] = self.character(self.w(self.len - 1));
@@ -743,7 +775,7 @@ impl Engine {
                 }
             }
             if changed {
-                self.hook.code = 1;
+                self.hook.code = code::WILL_PROCESS;
                 self.hook.backspaces = (self.len - s) as u8;
                 self.hook.count = self.hook.backspaces;
                 self.output_suffix(s);
@@ -796,7 +828,7 @@ impl Engine {
             .rev()
             .map(|i| self.ch(i))
             .find(|c| [KEY_A, KEY_O, KEY_E].contains(c));
-        let key = if self.cfg.input_type != 1 {
+        let key = if self.cfg.input_type != input::VNI {
             data
         } else if [KEY_7, KEY_8].contains(&data) {
             KEY_W
@@ -809,14 +841,18 @@ impl Engine {
             .iter()
             .any(|pat| self.suffix_valid(pat, data))
         {
-            if [p[5], p[6], p[7]].contains(&data) && !(self.cfg.input_type == 1 && data == KEY_7) {
+            if [p[5], p[6], p[7]].contains(&data)
+                && !(self.cfg.input_type == input::VNI && data == KEY_7)
+            {
                 self.insert_double(key, false);
-            } else if [p[8], p[7]].contains(&data) && (self.cfg.input_type == 1 || data == KEY_W) {
+            } else if [p[8], p[7]].contains(&data)
+                && (self.cfg.input_type == input::VNI || data == KEY_W)
+            {
                 let e = (0..self.len)
                     .rev()
                     .find(|&i| [KEY_A, KEY_O, KEY_U, KEY_E].contains(&self.ch(i)))
                     .unwrap_or(0);
-                let skip = self.cfg.input_type == 1
+                let skip = self.cfg.input_type == input::VNI
                     && ((data == KEY_7
                         && self.ch(e) == KEY_A
                         && (e == 0 || self.ch(e - 1) != KEY_U))
@@ -831,7 +867,7 @@ impl Engine {
     }
     /// C++ `handleMainKey` fallback when no vowel transformation applied.
     fn insert_unchanged(&mut self, data: u32, caps: bool) {
-        if data == KEY_W && self.cfg.input_type != 2 {
+        if data == KEY_W && self.cfg.input_type != input::SIMPLE_TELEX_1 {
             self.standalone(data, caps, KEY_U);
         } else {
             self.insert(data, caps, true);
@@ -850,7 +886,7 @@ impl Engine {
                 } else {
                     0
                 };
-                self.hook.code = 3;
+                self.hook.code = code::RESTORE;
                 self.hook.backspaces = self.len as u8;
                 self.hook.count = (self.len + 1) as u8;
                 if self.len < 31 {
@@ -869,7 +905,7 @@ impl Engine {
                 .iter()
                 .find(|(k, _)| *k == self.ch(self.len - 1))
             {
-                self.hook.code = 3;
+                self.hook.code = code::RESTORE;
                 if changed {
                     self.hook.count += 1;
                 } else {
@@ -926,13 +962,13 @@ impl Engine {
         }
     }
     pub fn english(&mut self, state: u32, data: u32, caps: bool, control: bool) {
-        self.hook.code = 0;
+        self.hook.code = code::DO_NOTHING;
         if state == 2 || (control && !caps) {
             self.hook.macro_key.clear();
             self.temporary_off = false;
         } else if data == KEY_SPACE {
             if !self.macro_handled && self.find_macro() {
-                self.hook.code = 4;
+                self.hook.code = code::REPLACE_MACRO;
                 self.hook.backspaces = self.hook.macro_key.len().min(255) as u8;
             }
             self.hook.macro_key.clear();
@@ -958,257 +994,273 @@ impl Engine {
             || word_break(data)
             || (self.len == 0 && number(data))
         {
-            self.hook.code = 0;
-            self.hook.backspaces = 0;
-            self.hook.count = 0;
-            self.hook.ext = 1;
-            if self.cfg.macros != 0 && macro_break(data) && !self.macro_handled && self.find_macro()
-            {
-                self.hook.code = 4;
-                self.hook.backspaces = self.hook.macro_key.len().min(255) as u8;
-                self.macro_handled = true;
-            } else if (self.cfg.quick_start != 0 || self.cfg.quick_end != 0)
-                && !self.disabled
-                && macro_break(data)
-            {
-                self.quick_consonant();
-            } else if self.cfg.restore_invalid != 0 && (event == 1 || word_break(data)) {
-                if !self.disabled && self.cfg.spelling != 0 {
-                    self.spelling(true);
-                }
-                if self.disabled && !self.restore_invalid(5) {
-                    self.hook.code = 0;
-                }
-            }
-            let is_punctuation = state == 0 && punctuation(data);
-            if !is_punctuation {
-                self.special.clear();
-                self.history.clear();
-            } else {
-                if self.spaces > 0 {
-                    self.history.push(vec![KEY_SPACE; self.spaces.min(32)]);
-                    self.spaces = 0;
-                } else {
-                    self.save_word();
-                }
-                self.special.push(data | if caps { CAPS_MASK } else { 0 });
-                self.hook.ext = 3;
-            }
-            if self.hook.code == 0 {
-                self.new_session();
-                self.cfg.spelling = i32::from(self.spelling_before);
-                self.temporary_off = false;
-            } else if self.hook.code == 4 || self.quick_handled {
-                self.len = 0;
-            }
-            if self.cfg.macros != 0 {
-                if is_punctuation && self.hook.macro_key.len() < 255 {
-                    self.hook
-                        .macro_key
-                        .push(data | if caps { CAPS_MASK } else { 0 });
-                } else {
-                    self.hook.macro_key.clear();
-                }
-            }
-            if self.cfg.upper_first != 0 {
-                self.upper_status = if data == KEY_DOT {
-                    1
-                } else if [KEY_ENTER, KEY_RETURN].contains(&data) {
-                    2
-                } else {
-                    0
-                };
-            }
+            self.on_break(event, state, data, caps);
         } else if data == KEY_SPACE {
+            self.on_space();
+        } else if data == KEY_DELETE {
+            self.on_delete();
+        } else {
+            self.on_key(data, caps);
+        }
+    }
+    /// Mouse clicks, control combinations, navigation and punctuation end the word.
+    fn on_break(&mut self, event: u32, state: u32, data: u32, caps: bool) {
+        self.hook.code = code::DO_NOTHING;
+        self.hook.backspaces = 0;
+        self.hook.count = 0;
+        self.hook.ext = ext::BREAK;
+        if self.cfg.macros != 0 && macro_break(data) && !self.macro_handled && self.find_macro() {
+            self.hook.code = code::REPLACE_MACRO;
+            self.hook.backspaces = self.hook.macro_key.len().min(255) as u8;
+            self.macro_handled = true;
+        } else if (self.cfg.quick_start != 0 || self.cfg.quick_end != 0)
+            && !self.disabled
+            && macro_break(data)
+        {
+            self.quick_consonant();
+        } else if self.cfg.restore_invalid != 0 && (event == 1 || word_break(data)) {
             if !self.disabled && self.cfg.spelling != 0 {
                 self.spelling(true);
             }
-            if self.cfg.macros != 0 && !self.macro_handled && self.find_macro() {
-                self.hook.code = 4;
-                self.hook.backspaces = self.hook.macro_key.len().min(255) as u8;
-                self.macro_handled = true;
-            } else if (self.cfg.quick_start != 0 || self.cfg.quick_end != 0)
-                && !self.disabled
-                && self.quick_consonant()
-            {
-            } else if self.cfg.restore_invalid != 0 && self.disabled && !self.macro_handled {
-                if !self.restore_invalid(3) {
-                    self.hook.code = 0;
-                }
+            if self.disabled && !self.restore_invalid(code::RESTORE_AND_START_NEW_SESSION) {
+                self.hook.code = code::DO_NOTHING;
+            }
+        }
+        let is_punctuation = state == 0 && punctuation(data);
+        if !is_punctuation {
+            self.special.clear();
+            self.history.clear();
+        } else {
+            if self.spaces > 0 {
+                self.history.push(vec![KEY_SPACE; self.spaces.min(32)]);
+                self.spaces = 0;
             } else {
-                self.hook.code = 0;
+                self.save_word();
             }
-            self.spaces = (self.spaces + 1).min(32);
-            if self.cfg.macros != 0 {
-                self.hook.macro_key.clear();
-            }
-            if self.cfg.upper_first != 0 && self.upper_status == 1 {
-                self.upper_status = 2;
-            }
-            if self.spaces == 1 {
-                if !self.special.is_empty() {
-                    self.save_special();
-                } else {
-                    self.save_word();
-                }
-            }
+            self.special.push(data | if caps { CAPS_MASK } else { 0 });
+            self.hook.ext = ext::NORMAL;
+        }
+        if self.hook.code == code::DO_NOTHING {
+            self.new_session();
             self.cfg.spelling = i32::from(self.spelling_before);
             self.temporary_off = false;
-        } else if data == KEY_DELETE {
-            self.hook.code = 0;
-            self.hook.ext = 2;
-            if !self.special.is_empty() {
-                self.special.pop();
-                if self.special.is_empty() {
-                    self.restore_history();
-                }
-            } else if self.spaces > 0 {
-                self.spaces -= 1;
-                if self.spaces == 0 {
-                    self.restore_history();
-                }
+        } else if self.hook.code == code::REPLACE_MACRO || self.quick_handled {
+            self.len = 0;
+        }
+        if self.cfg.macros != 0 {
+            if is_punctuation && self.hook.macro_key.len() < 255 {
+                self.hook
+                    .macro_key
+                    .push(data | if caps { CAPS_MASK } else { 0 });
             } else {
-                self.raw.pop();
-                if self.len > 0 {
-                    self.len -= 1;
-                    if let Some(x) = self.long_word.pop() {
-                        self.word.copy_within(0..31, 1);
-                        self.word[0] = x;
-                        self.len += 1;
-                    }
-                    if self.cfg.spelling != 0 {
-                        self.spelling(false);
-                    }
-                }
-                if self.cfg.macros != 0 {
-                    self.hook.macro_key.pop();
-                }
-                self.hook.backspaces = 0;
-                self.hook.count = 0;
-                self.hook.ext = 2;
-                if self.len == 0 {
-                    self.new_session();
-                    self.special.clear();
-                    self.restore_history();
-                } else {
-                    self.grammar(1);
-                }
+                self.hook.macro_key.clear();
+            }
+        }
+        if self.cfg.upper_first != 0 {
+            self.upper_status = if data == KEY_DOT {
+                1
+            } else if [KEY_ENTER, KEY_RETURN].contains(&data) {
+                2
+            } else {
+                0
+            };
+        }
+    }
+    fn on_space(&mut self) {
+        if !self.disabled && self.cfg.spelling != 0 {
+            self.spelling(true);
+        }
+        if self.cfg.macros != 0 && !self.macro_handled && self.find_macro() {
+            self.hook.code = code::REPLACE_MACRO;
+            self.hook.backspaces = self.hook.macro_key.len().min(255) as u8;
+            self.macro_handled = true;
+        } else if (self.cfg.quick_start != 0 || self.cfg.quick_end != 0)
+            && !self.disabled
+            && self.quick_consonant()
+        {
+        } else if self.cfg.restore_invalid != 0 && self.disabled && !self.macro_handled {
+            if !self.restore_invalid(code::RESTORE) {
+                self.hook.code = code::DO_NOTHING;
             }
         } else {
-            if self.temporary_off {
-                self.hook.code = 0;
-                self.hook.ext = 3;
-                return;
-            }
-            if self.spaces > 0 {
-                self.hook.ext = 0;
-                self.new_session();
-                self.history.push(vec![KEY_SPACE; self.spaces]);
-                self.spaces = 0;
-            } else if !self.special.is_empty() {
+            self.hook.code = code::DO_NOTHING;
+        }
+        self.spaces = (self.spaces + 1).min(32);
+        if self.cfg.macros != 0 {
+            self.hook.macro_key.clear();
+        }
+        if self.cfg.upper_first != 0 && self.upper_status == 1 {
+            self.upper_status = 2;
+        }
+        if self.spaces == 1 {
+            if !self.special.is_empty() {
                 self.save_special();
-            }
-            if self.raw.len() == 32 {
-                self.raw.remove(0);
-            }
-            self.raw.push(data | if caps { CAPS_MASK } else { 0 });
-            let special = if self.cfg.input_type == 1 {
-                [
-                    KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0,
-                ]
-                .contains(&data)
             } else {
-                [
-                    KEY_W, KEY_E, KEY_R, KEY_O, KEY_A, KEY_S, KEY_D, KEY_F, KEY_J, KEY_Z, KEY_X,
-                ]
-                .contains(&data)
-                    || (self.cfg.input_type == 0
-                        && [KEY_LEFT_BRACKET, KEY_RIGHT_BRACKET].contains(&data))
-            };
-            if !special || self.disabled {
-                if self.cfg.quick_telex != 0 && self.len > 0 && self.ch(self.len - 1) == data {
-                    if let Some((_, pair)) =
-                        _quickTelex.iter().find(|(k, _)| *k == data && *k != KEY_U)
-                    {
-                        self.hook.code = 1;
-                        self.hook.backspaces = 1;
-                        self.hook.count = 2;
-                        self.hook.chars[1] = pair[0] | if caps { CAPS_MASK } else { 0 };
-                        self.hook.chars[0] = pair[1] | if caps { CAPS_MASK } else { 0 };
-                        self.insert(pair[1], caps, false);
-                        return;
-                    }
+                self.save_word();
+            }
+        }
+        self.cfg.spelling = i32::from(self.spelling_before);
+        self.temporary_off = false;
+    }
+    /// Backspace shrinks the punctuation/space run or the word, restoring history at its start.
+    fn on_delete(&mut self) {
+        self.hook.code = code::DO_NOTHING;
+        self.hook.ext = ext::DELETE;
+        if !self.special.is_empty() {
+            self.special.pop();
+            if self.special.is_empty() {
+                self.restore_history();
+            }
+        } else if self.spaces > 0 {
+            self.spaces -= 1;
+            if self.spaces == 0 {
+                self.restore_history();
+            }
+        } else {
+            self.raw.pop();
+            if self.len > 0 {
+                self.len -= 1;
+                if let Some(x) = self.long_word.pop() {
+                    self.word.copy_within(0..31, 1);
+                    self.word[0] = x;
+                    self.len += 1;
                 }
-                self.hook.code = 0;
-                self.hook.backspaces = 0;
-                self.hook.count = 0;
-                self.hook.ext = 3;
-                self.insert(data, caps, true);
-            } else {
-                self.hook.code = 0;
-                self.hook.ext = 3;
-                self.main_key(data, caps);
-            }
-            if self.cfg.free_mark == 0 && data != self.processing()[9] {
-                self.grammar(if self.hook.code == 0 { -1 } else { 0 });
-            }
-            if self.hook.code == 3 {
-                self.insert(data, caps, true);
-                self.raw.pop();
+                if self.cfg.spelling != 0 {
+                    self.spelling(false);
+                }
             }
             if self.cfg.macros != 0 {
-                if self.hook.code == 0 {
-                    if self.hook.macro_key.len() < 255 {
-                        self.hook
-                            .macro_key
-                            .push(data | if caps { CAPS_MASK } else { 0 });
-                    }
-                } else if self.hook.code == 1 || self.hook.code == 3 {
-                    for _ in 0..self.hook.backspaces {
-                        self.hook.macro_key.pop();
-                    }
-                    let start = self.len.saturating_sub(self.hook.backspaces as usize);
-                    for i in start..(start + self.hook.count as usize).min(32) {
-                        if self.hook.macro_key.len() < 255 {
-                            self.hook.macro_key.push(self.w(i));
-                        }
-                    }
-                }
+                self.hook.macro_key.pop();
             }
-            if self.cfg.upper_first != 0 {
-                if self.len == 1 && self.upper_status == 2 && self.w(0) & CAPS_MASK == 0 {
-                    self.hook.code = 1;
-                    self.hook.backspaces = 0;
-                    self.hook.count = 1;
-                    self.word[0] |= CAPS_MASK;
-                    self.hook.chars[0] = self.character(self.w(0));
-                    if let Some(first) = self.hook.macro_key.first_mut() {
-                        *first |= CAPS_MASK;
-                    }
-                }
-                self.upper_status = 0;
+            self.hook.backspaces = 0;
+            self.hook.count = 0;
+            self.hook.ext = ext::DELETE;
+            if self.len == 0 {
+                self.new_session();
+                self.special.clear();
+                self.restore_history();
+            } else {
+                self.grammar(1);
             }
-            if [KEY_LEFT_BRACKET, KEY_RIGHT_BRACKET].contains(&data)
-                && ([KEY_LEFT_BRACKET, KEY_RIGHT_BRACKET]
-                    .contains(&(self.hook.chars[0] & CHAR_MASK))
-                    || [2, 3].contains(&self.cfg.input_type))
-            {
-                if self.len
-                    > if self.hook.code == 1 {
-                        self.hook.backspaces as usize
-                    } else {
-                        0
-                    }
+        }
+    }
+    /// Letters and composition keys.
+    fn on_key(&mut self, data: u32, caps: bool) {
+        if self.temporary_off {
+            self.hook.code = code::DO_NOTHING;
+            self.hook.ext = ext::NORMAL;
+            return;
+        }
+        if self.spaces > 0 {
+            self.hook.ext = ext::WORD_START;
+            self.new_session();
+            self.history.push(vec![KEY_SPACE; self.spaces]);
+            self.spaces = 0;
+        } else if !self.special.is_empty() {
+            self.save_special();
+        }
+        if self.raw.len() == 32 {
+            self.raw.remove(0);
+        }
+        self.raw.push(data | if caps { CAPS_MASK } else { 0 });
+        let special = if self.cfg.input_type == input::VNI {
+            [
+                KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0,
+            ]
+            .contains(&data)
+        } else {
+            [
+                KEY_W, KEY_E, KEY_R, KEY_O, KEY_A, KEY_S, KEY_D, KEY_F, KEY_J, KEY_Z, KEY_X,
+            ]
+            .contains(&data)
+                || (self.cfg.input_type == input::TELEX
+                    && [KEY_LEFT_BRACKET, KEY_RIGHT_BRACKET].contains(&data))
+        };
+        if !special || self.disabled {
+            if self.cfg.quick_telex != 0 && self.len > 0 && self.ch(self.len - 1) == data {
+                if let Some((_, pair)) = _quickTelex.iter().find(|(k, _)| *k == data && *k != KEY_U)
                 {
-                    self.len -= 1;
-                    self.save_word();
+                    self.hook.code = code::WILL_PROCESS;
+                    self.hook.backspaces = 1;
+                    self.hook.count = 2;
+                    self.hook.chars[1] = pair[0] | if caps { CAPS_MASK } else { 0 };
+                    self.hook.chars[0] = pair[1] | if caps { CAPS_MASK } else { 0 };
+                    self.insert(pair[1], caps, false);
+                    return;
                 }
-                self.len = 0;
-                self.disabled = false;
-                self.raw.clear();
-                self.hook.ext = 3;
-                self.special.push(data | if caps { CAPS_MASK } else { 0 });
             }
+            self.hook.code = code::DO_NOTHING;
+            self.hook.backspaces = 0;
+            self.hook.count = 0;
+            self.hook.ext = ext::NORMAL;
+            self.insert(data, caps, true);
+        } else {
+            self.hook.code = code::DO_NOTHING;
+            self.hook.ext = ext::NORMAL;
+            self.main_key(data, caps);
+        }
+        if self.cfg.free_mark == 0 && data != self.processing()[9] {
+            self.grammar(if self.hook.code == code::DO_NOTHING {
+                -1
+            } else {
+                0
+            });
+        }
+        if self.hook.code == code::RESTORE {
+            self.insert(data, caps, true);
+            self.raw.pop();
+        }
+        if self.cfg.macros != 0 {
+            if self.hook.code == code::DO_NOTHING {
+                if self.hook.macro_key.len() < 255 {
+                    self.hook
+                        .macro_key
+                        .push(data | if caps { CAPS_MASK } else { 0 });
+                }
+            } else if self.hook.code == code::WILL_PROCESS || self.hook.code == code::RESTORE {
+                for _ in 0..self.hook.backspaces {
+                    self.hook.macro_key.pop();
+                }
+                let start = self.len.saturating_sub(self.hook.backspaces as usize);
+                for i in start..(start + self.hook.count as usize).min(32) {
+                    if self.hook.macro_key.len() < 255 {
+                        self.hook.macro_key.push(self.w(i));
+                    }
+                }
+            }
+        }
+        if self.cfg.upper_first != 0 {
+            if self.len == 1 && self.upper_status == 2 && self.w(0) & CAPS_MASK == 0 {
+                self.hook.code = code::WILL_PROCESS;
+                self.hook.backspaces = 0;
+                self.hook.count = 1;
+                self.word[0] |= CAPS_MASK;
+                self.hook.chars[0] = self.character(self.w(0));
+                if let Some(first) = self.hook.macro_key.first_mut() {
+                    *first |= CAPS_MASK;
+                }
+            }
+            self.upper_status = 0;
+        }
+        if [KEY_LEFT_BRACKET, KEY_RIGHT_BRACKET].contains(&data)
+            && ([KEY_LEFT_BRACKET, KEY_RIGHT_BRACKET].contains(&(self.hook.chars[0] & CHAR_MASK))
+                || [input::SIMPLE_TELEX_1, input::SIMPLE_TELEX_2].contains(&self.cfg.input_type))
+        {
+            if self.len
+                > if self.hook.code == code::WILL_PROCESS {
+                    self.hook.backspaces as usize
+                } else {
+                    0
+                }
+            {
+                self.len -= 1;
+                self.save_word();
+            }
+            self.len = 0;
+            self.disabled = false;
+            self.raw.clear();
+            self.hook.ext = ext::NORMAL;
+            self.special.push(data | if caps { CAPS_MASK } else { 0 });
         }
     }
 }

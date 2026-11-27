@@ -1,4 +1,11 @@
-use super::{engine::Engine, ffi::*, keys::*, tables::*, text::*, Config};
+use super::{
+    engine::{code, Engine},
+    ffi::*,
+    keys::*,
+    tables::*,
+    text::*,
+    Config,
+};
 
 fn config(mode: i32, code: i32, modern: i32, profile: i32) -> Config {
     Config {
@@ -119,11 +126,11 @@ fn macro_and_app_data_roundtrip_and_reject_truncation() {
         let mut copy = Macros::default();
         copy.add("keep", "giữ");
         assert!(!copy.load(&bytes[..end]));
-        assert!(copy.0.contains_key("keep"));
+        assert!(copy.contains("keep"));
     }
     let mut copy = Macros::default();
     assert!(copy.load(&bytes));
-    assert_eq!(copy.0, macros.0);
+    assert_eq!(copy.entries(), macros.entries());
     assert_eq!(
         copy.find(&encode("ms", 0), 0, false),
         Some(encode("một giây 😀", 0))
@@ -147,10 +154,10 @@ fn macro_and_app_data_roundtrip_and_reject_truncation() {
     }
     assert!(!copy.add(&"a".repeat(256), "too long"));
     assert!(!copy.import("broken input", false));
-    assert_eq!(copy.0, macros.0);
+    assert_eq!(copy.entries(), macros.entries());
     let mut imported = Macros::default();
     assert!(imported.import(&copy.export(), false));
-    assert_eq!(copy.0, imported.0);
+    assert_eq!(copy.entries(), imported.entries());
 }
 #[test]
 fn encoding_roundtrips_and_preserves_case_and_emoji() {
@@ -224,10 +231,17 @@ fn ffi_checks_inputs_and_matches_c_layout() {
             0
         );
         assert_eq!(out.count, 0);
-        let buffer = ok_engine_command(engine, 0, std::ptr::null(), 10, 0, 0);
+        let buffer = ok_engine_command(engine, command::LOAD_MACROS, std::ptr::null(), 10, 0, 0);
         assert_eq!(buffer.status, 0);
         ok_buffer_free(buffer);
-        let buffer = ok_engine_command(engine, 2, "ms\0một".as_ptr(), "ms\0một".len(), 0, 0);
+        let buffer = ok_engine_command(
+            engine,
+            command::ADD_MACRO,
+            "ms\0một".as_ptr(),
+            "ms\0một".len(),
+            0,
+            0,
+        );
         assert_eq!(buffer.status, 1);
         ok_buffer_free(buffer);
         ok_engine_destroy(engine);
@@ -252,7 +266,7 @@ fn field_boundary_discards_typing_and_macro_history_but_keeps_preferences() {
     assert!(engine.hook.macro_key.is_empty());
     assert!(engine.hook.macro_data.is_empty());
     assert!(!engine.temporary_off);
-    assert!(engine.macros.0.contains_key("btw"));
+    assert!(engine.macros.contains("btw"));
     assert_eq!(engine.apps["com.apple.Notes"], 1);
     engine.event(0, 0, KEY_S, 0, false);
     assert_eq!(engine.hook.code, 0); // No vowel from the previous text field to accent.
@@ -263,4 +277,101 @@ fn field_boundary_discards_typing_and_macro_history_but_keeps_preferences() {
     engine.english(0, KEY_W, false, false);
     engine.english(0, KEY_SPACE, false, false);
     assert_eq!(engine.hook.code, 0); // No cross-field expansion of btw.
+}
+
+/// `OpenKeyRust.h` and the C++ `HoolCodeState` enum are hand-written; fail if they drift.
+#[test]
+fn c_header_and_hook_codes_match_rust() {
+    let header = include_str!("../OpenKeyRust.h");
+    let ops = [
+        ("LOAD_MACROS", command::LOAD_MACROS),
+        ("SAVE_MACROS", command::SAVE_MACROS),
+        ("ADD_MACRO", command::ADD_MACRO),
+        ("DELETE_MACRO", command::DELETE_MACRO),
+        ("HAS_MACRO", command::HAS_MACRO),
+        ("LIST_MACROS", command::LIST_MACROS),
+        ("IMPORT_MACROS", command::IMPORT_MACROS),
+        ("EXPORT_MACROS", command::EXPORT_MACROS),
+        ("LOAD_APPS", command::LOAD_APPS),
+        ("SAVE_APPS", command::SAVE_APPS),
+        ("GET_APP_LANGUAGE", command::GET_APP_LANGUAGE),
+        ("SET_APP_LANGUAGE", command::SET_APP_LANGUAGE),
+        ("CONVERT", command::CONVERT),
+        ("FIND_MACRO", command::FIND_MACRO),
+        ("MACRO_DATA", command::MACRO_DATA),
+        ("ENCODE", command::ENCODE),
+    ];
+    let declared: Vec<(&str, u32)> = header
+        .lines()
+        .filter_map(|line| {
+            let (name, value) = line.trim().strip_prefix("OK_CMD_")?.split_once(" = ")?;
+            Some((name, value.trim_end_matches(',').parse().ok()?))
+        })
+        .collect();
+    assert_eq!(declared, ops);
+    for (name, value) in [
+        ("SPELLING_BASELINE", option::SPELLING_BASELINE),
+        ("TEMPORARY_OFF", option::TEMPORARY_OFF),
+    ] {
+        assert!(
+            header.contains(&format!("OK_OPTION_{name} = {value}")),
+            "{name}"
+        );
+    }
+    let data_type = include_str!("../../engine/DataType.h");
+    let start = data_type.find("enum HoolCodeState {").unwrap();
+    let end = start + data_type[start..].find("};").unwrap();
+    let states: Vec<&str> = data_type[start..end]
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            line.trim()
+                .split([' ', ','])
+                .next()
+                .filter(|x| !x.is_empty())
+        })
+        .collect();
+    let position = |name: &str| states.iter().position(|x| *x == name).unwrap() as u8;
+    assert_eq!(position("vDoNothing"), code::DO_NOTHING);
+    assert_eq!(position("vWillProcess"), code::WILL_PROCESS);
+    assert_eq!(position("vRestore"), code::RESTORE);
+    assert_eq!(position("vReplaceMaro"), code::REPLACE_MACRO);
+    assert_eq!(
+        position("vRestoreAndStartNewSession"),
+        code::RESTORE_AND_START_NEW_SESSION
+    );
+}
+#[test]
+fn macro_lookup_cache_follows_mutations_and_code_table() {
+    let mut macros = Macros::default();
+    assert_eq!(macros.find(&encode("đc", 0), 0, false), None);
+    assert!(macros.add("đc", "địa chỉ"));
+    assert_eq!(
+        macros.find(&encode("đc", 0), 0, false),
+        Some(encode("địa chỉ", 0))
+    );
+    // Switching table re-encodes names for that table.
+    assert_eq!(
+        macros.find(&encode("đc", 1), 1, false),
+        Some(encode("địa chỉ", 1))
+    );
+    assert!(macros.add("đc", "được"));
+    assert_eq!(
+        macros.find(&encode("đc", 1), 1, false),
+        Some(encode("được", 1))
+    );
+    assert_eq!(
+        macros.find(&encode("Đc", 1), 1, true),
+        Some(encode("Được", 1))
+    );
+    assert!(macros.remove("đc"));
+    assert!(!macros.remove("đc"));
+    assert_eq!(macros.find(&encode("đc", 1), 1, false), None);
+    assert!(macros.import(";header\nbtw:by the way\n", true));
+    assert_eq!(
+        macros.find(&encode("btw", 0), 0, false),
+        Some(encode("by the way", 0))
+    );
+    assert!(macros.load(&Macros::default().save(0)));
+    assert_eq!(macros.find(&encode("btw", 0), 0, false), None);
 }

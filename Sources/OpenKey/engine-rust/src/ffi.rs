@@ -4,6 +4,42 @@ use std::{
     slice,
 };
 
+/// `ok_engine_command` operations. These values are ABI; `OpenKeyRust.h` mirrors them (checked in tests).
+pub mod command {
+    /// Replace macros from persisted bytes; empty input clears them.
+    pub const LOAD_MACROS: u32 = 0;
+    /// Persisted macro bytes, sorted by encoded key.
+    pub const SAVE_MACROS: u32 = 1;
+    /// Input is `name\0content`.
+    pub const ADD_MACRO: u32 = 2;
+    pub const DELETE_MACRO: u32 = 3;
+    pub const HAS_MACRO: u32 = 4;
+    /// Same format as `SAVE_MACROS`; used to list macros.
+    pub const LIST_MACROS: u32 = 5;
+    /// UniKey-compatible text; `flags != 0` appends.
+    pub const IMPORT_MACROS: u32 = 6;
+    pub const EXPORT_MACROS: u32 = 7;
+    pub const LOAD_APPS: u32 = 8;
+    pub const SAVE_APPS: u32 = 9;
+    /// Returns the stored i32, or -1 after storing `flags` for a new app.
+    pub const GET_APP_LANGUAGE: u32 = 10;
+    pub const SET_APP_LANGUAGE: u32 = 11;
+    /// `flags`: bits 24.. source table, 1 upper, 2 lower, 4 sentence, 8 words, 16 remove marks.
+    pub const CONVERT: u32 = 12;
+    /// Input is little-endian u32 key codes; returns u32 content.
+    pub const FIND_MACRO: u32 = 13;
+    /// u32 content of the last macro replacement.
+    pub const MACRO_DATA: u32 = 14;
+    /// Text as u32 key codes for `code`.
+    pub const ENCODE: u32 = 15;
+}
+/// `ok_engine_option` actions.
+pub mod option {
+    /// Spelling setting restored after a temporary toggle.
+    pub const SPELLING_BASELINE: u32 = 0;
+    /// Pause composition until the next word boundary.
+    pub const TEMPORARY_OFF: u32 = 1;
+}
 #[repr(C)]
 #[derive(Default)]
 pub struct ResultState {
@@ -137,8 +173,8 @@ pub unsafe extern "C" fn ok_engine_reset(
 pub unsafe extern "C" fn ok_engine_option(engine: *mut Engine, action: u32, value: i32) {
     if let Some(engine) = unsafe { engine.as_mut() } {
         match action {
-            0 => engine.spelling_before = value != 0,
-            1 => engine.temporary_off = value != 0,
+            option::SPELLING_BASELINE => engine.spelling_before = value != 0,
+            option::TEMPORARY_OFF => engine.temporary_off = value != 0,
             _ => {}
         }
     }
@@ -176,7 +212,7 @@ pub unsafe extern "C" fn ok_engine_command(
     let result = catch_unwind(AssertUnwindSafe(|| -> Option<Vec<u8>> {
         let string = || std::str::from_utf8(input).ok();
         match operation {
-            0 => {
+            command::LOAD_MACROS => {
                 if input.is_empty() {
                     engine.macros = text::Macros::default();
                     Some(vec![])
@@ -184,16 +220,16 @@ pub unsafe extern "C" fn ok_engine_command(
                     engine.macros.load(input).then(Vec::new)
                 }
             }
-            1 | 5 => Some(engine.macros.save(code as usize)),
-            2 => {
+            command::SAVE_MACROS | command::LIST_MACROS => Some(engine.macros.save(code as usize)),
+            command::ADD_MACRO => {
                 let (key, value) = string()?.split_once('\0')?;
                 engine.macros.add(key, value).then(Vec::new)
             }
-            3 => engine.macros.0.remove(string()?).map(|_| vec![]),
-            4 => engine.macros.0.contains_key(string()?).then(Vec::new),
-            6 => engine.macros.import(string()?, flags != 0).then(Vec::new),
-            7 => Some(engine.macros.export().into_bytes()),
-            8 => {
+            command::DELETE_MACRO => engine.macros.remove(string()?).then(Vec::new),
+            command::HAS_MACRO => engine.macros.contains(string()?).then(Vec::new),
+            command::IMPORT_MACROS => engine.macros.import(string()?, flags != 0).then(Vec::new),
+            command::EXPORT_MACROS => Some(engine.macros.export().into_bytes()),
+            command::LOAD_APPS => {
                 let next = if input.is_empty() {
                     Default::default()
                 } else {
@@ -202,8 +238,8 @@ pub unsafe extern "C" fn ok_engine_command(
                 engine.apps = next;
                 Some(vec![])
             }
-            9 => Some(text::save_apps(&engine.apps)),
-            10 => {
+            command::SAVE_APPS => Some(text::save_apps(&engine.apps)),
+            command::GET_APP_LANGUAGE => {
                 let name = string()?;
                 if name.is_empty() || name.len() > 255 || flags > 9 {
                     return None;
@@ -219,7 +255,7 @@ pub unsafe extern "C" fn ok_engine_command(
                 };
                 Some(value.to_le_bytes().to_vec())
             }
-            11 => {
+            command::SET_APP_LANGUAGE => {
                 let name = string()?;
                 if name.is_empty()
                     || name.len() > 255
@@ -231,11 +267,11 @@ pub unsafe extern "C" fn ok_engine_command(
                 engine.apps.insert(name.to_string(), flags as u8);
                 Some(vec![])
             }
-            12 => {
+            command::CONVERT => {
                 let from = (flags >> 24) as usize;
                 Some(text::convert(string()?, from, code as usize, flags & 0xffffff).into_bytes())
             }
-            13 => {
+            command::FIND_MACRO => {
                 if input.len() % 4 != 0 {
                     return None;
                 }
@@ -250,7 +286,7 @@ pub unsafe extern "C" fn ok_engine_command(
                     .find(&key, code as usize, flags != 0)
                     .map(|data| data.into_iter().flat_map(u32::to_le_bytes).collect())
             }
-            14 => Some(
+            command::MACRO_DATA => Some(
                 engine
                     .hook
                     .macro_data
@@ -258,7 +294,7 @@ pub unsafe extern "C" fn ok_engine_command(
                     .flat_map(|x| x.to_le_bytes())
                     .collect(),
             ),
-            15 => Some(
+            command::ENCODE => Some(
                 text::encode(string()?, code as usize)
                     .into_iter()
                     .flat_map(u32::to_le_bytes)

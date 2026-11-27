@@ -1,0 +1,14 @@
+# Inputs where the legacy C++ engine itself misbehaves, so matching it exactly is not a goal.
+# Format: the generated case line exactly (options TAB keys). Seed 1 (used by CI) has none.
+#
+# VNI 7/8 after ươ is ignored by the engine but still reaches the app, so the screen and the
+# composition buffer disagree. The next mark key garbles text in both engines, differently.
+1 0 0 16	ngu7o72822i
+1 3 0 0	la27 ngu72o782i
+1 1 0 32	d9u27o78n2g la2
+1 0 0 3	ngU7o72I82
+1 0 0 6	khuye6n3 ngu7o72i82
+1 0 1 8	ngu7o72i82 d9u7o7ng
+#
+# Five-vowel non-words: mark placement relies on C++ state outside the vowel cluster.
+1 2 0 66	9oa5iiy8[
