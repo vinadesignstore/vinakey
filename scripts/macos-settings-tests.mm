@@ -98,7 +98,7 @@ int main(void) { @autoreleasepool {
         assert(controls[option]); [controls[option] setState:NSControlStateValueOn]; [controller changeOption:controls[option]];
         assert([testDefaults boolForKey:option]);
     }
-    [controller showPage:@"compatibility"]; assert(panes.selectedTabViewItemIndex==3);
+    [controller showPage:@"general"]; assert(panes.selectedTabViewItemIndex==0);
     for (NSString *option in @[@"FixRecommendBrowser",@"vFixChromiumBrowser",@"SendKeyStepByStep",@"vPerformLayoutCompat",@"vOtherLanguage"]) {
         assert(controls[option]); [controls[option] setState:NSControlStateValueOn]; [controller changeOption:controls[option]];
         assert([testDefaults boolForKey:option]);
@@ -117,10 +117,11 @@ int main(void) { @autoreleasepool {
     [controller removeApp:nil]; assert([testDefaults dictionaryForKey:@"AppLanguageRules"].count==0);
     [controller showConversion];
     NSWindow *sheet=[[controller valueForKey:@"utilityWC"] window];
-    assert(sheet.contentLayoutRect.size.width>=600 && sheet.contentLayoutRect.size.height>=360);
+    assert(sheet.contentLayoutRect.size.width==520 && sheet.contentLayoutRect.size.height>=220 && sheet.contentLayoutRect.size.height<300);
     NSPopUpButton *from=[controller valueForKey:@"fromCode"]; [from selectItemAtIndex:2];
     [controller changeConversion:nil]; assert(convertToolFromCode==2);
     [controller closeUtility:nil];
+    [controller showPage:@"about"]; assert(panes.selectedTabViewItemIndex==3);
     [controller showPage:@"general"]; assert([recorder accessibilityPerformPress] && recordingShortcut);
     trusted=NO; [controller refresh]; assert(!recordingShortcut); assert(!active && [[controller valueForKey:@"gateVisible"] boolValue]);
     assert(controller.window.toolbar==nil && controller.window.contentViewController!=panes);

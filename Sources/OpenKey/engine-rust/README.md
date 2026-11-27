@@ -1,4 +1,4 @@
-# Rust engine — macOS review checkpoint
+# VinaKey Rust engine — macOS review checkpoint
 
 The macOS app now links this dependency-free Rust static library instead of the five legacy C++ engine sources. AppKit owns the menu bar, settings window and keyboard event tap; SwiftUI renders grouped settings forms on macOS 13 and later. `RustBridge.cpp` adapts the existing Objective-C++ callers; composition, spelling, macros, encoding conversion and remembered app data run in Rust. Windows and Linux source/build files are unchanged.
 
@@ -71,7 +71,15 @@ Additional milestone 3 computer checks:
 VNI, Unicode, Option-Z, smart switching and browser-workaround settings were restored. The live-authorized app was `/Users/hai/Downloads/OpenKey-milestone-3/OpenKey.app`; it predates the final explicit-pause-on-wake adjustment. That adjustment has native lifecycle coverage, but the final review artifact still needs a live run. Those results remain a draft checkpoint, not a merge-ready live-validation claim.
 
 
-## Milestone 4: native menu-bar app
+## VinaKey fork checkpoint
+
+The macOS product is now **VinaKey** (`com.vinadesignstore.vinakey`), published separately at `vinadesignstore/vinakey`. Source paths, engine ABI and Xcode scheme retain their historical names; Windows/Linux remain inherited OpenKey source. Original copyright/license notices are preserved in source, LICENSE and NOTICE.md.
+
+Current tabs are **Chung**, **Gõ tiếng Việt**, **Ứng dụng** and **Giới thiệu**. Compatibility controls are a described section inside Chung. Every option has explanatory text. The status menu uses **ABC** and solid EN/VI template badges with transparent letter cutouts. About shows VinaKey/version and repository/license links; the previous introductory credit paragraph is removed. Clipboard conversion is a compact native sheet with a standard Close/Convert footer. Automatic upstream OpenKey update checking is disconnected; the update command opens VinaKey Releases. No release updater/signing workflow was added.
+
+The universal VinaKey build and native checks pass, covering the merged controls, About navigation, compact sheet dimensions, ABC selection and rasterized badge fill/letter cutouts. This new VinaKey artifact has not been granted Accessibility access or computer-tested. Historical live results below apply to the named OpenKey artifacts only. The separate VinaKey identity leaves OpenKey permissions/preferences untouched. Milestone 5 remains deferred.
+
+## Historical milestone 4: OpenKey native menu-bar app
 
 The menu-bar app has four native toolbar settings tabs: **Chung**, **Gõ tiếng Việt**, **Ứng dụng** and **Tương thích**. AppKit owns the window/toolbar; SwiftUI grouped forms provide content on macOS 13+, with an AppKit fallback on older systems. There is no sidebar/search or Advanced Settings route.
 

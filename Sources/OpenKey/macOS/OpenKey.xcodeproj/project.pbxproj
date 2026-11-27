@@ -620,8 +620,8 @@
 					"-lopenkey_engine",
 					"-liconv",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.tuyenmai.openkey;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.vinadesignstore.vinakey;
+				PRODUCT_NAME = VinaKey;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = Debug;
@@ -654,8 +654,8 @@
 					"-lopenkey_engine",
 					"-liconv",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.tuyenmai.openkey;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.vinadesignstore.vinakey;
+				PRODUCT_NAME = VinaKey;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = Release;

@@ -175,13 +175,13 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
     _controls=[NSMutableDictionary new]; _formControllers=[NSMutableArray new];
     _panes=[OKSettingsTabs new]; _panes.tabStyle=NSTabViewControllerTabStyleToolbar;
     NSString *saved=[[NSUserDefaults standardUserDefaults] stringForKey:@"SettingsPane"];
-    for (NSArray *pane in @[@[@"general",@"Chung",@"gearshape"], @[@"typing",@"Gõ tiếng Việt",@"keyboard"], @[@"apps",@"Ứng dụng",@"app.badge"], @[@"compatibility",@"Tương thích",@"slider.horizontal.3"]]) {
+    for (NSArray *pane in @[@[@"general",@"Chung",@"gearshape"], @[@"typing",@"Gõ tiếng Việt",@"keyboard"], @[@"apps",@"Ứng dụng",@"app.badge"], @[@"about",@"Giới thiệu",@"info.circle"]]) {
         NSTabViewItem *item=[NSTabViewItem tabViewItemWithViewController:[self formForPage:pane[0]]];
         item.identifier=pane[0]; item.label=pane[1];
         if (@available(macOS 11.0,*)) item.image=[NSImage imageWithSystemSymbolName:pane[2] accessibilityDescription:nil];
         [_panes addTabViewItem:item];
     }
-    for (NSUInteger i=0;i<_panes.tabViewItems.count;i++) if ([_panes.tabViewItems[i].identifier isEqual:saved]) _panes.selectedTabViewItemIndex=i;
+    for (NSUInteger i=0;i<_panes.tabViewItems.count;i++) if ([_panes.tabViewItems[i].identifier isEqual:([saved isEqual:@"compatibility"] ? @"general" : saved)]) _panes.selectedTabViewItemIndex=i;
     [self refresh];
     return self;
 }
@@ -191,7 +191,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
     if ([page isEqual:@"general"]) [self generalPage];
     else if ([page isEqual:@"typing"]) [self typingPage];
     else if ([page isEqual:@"apps"]) [self appsPage];
-    else if ([page isEqual:@"compatibility"]) [self compatibilityPage];
+    else if ([page isEqual:@"about"]) [self aboutPage];
     else [self conversionPage];
     NSViewController *controller;
     if (@available(macOS 13.0,*)) {
@@ -212,7 +212,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
             [_content.topAnchor constraintEqualToAnchor:document.topAnchor constant:20],
             [_content.bottomAnchor constraintEqualToAnchor:document.bottomAnchor constant:-20]]];
     }
-    controller.preferredContentSize=NSMakeSize(640,[page isEqual:@"typing"] ? 540 : [page isEqual:@"apps"] ? 420 : 340);
+    controller.preferredContentSize=[page isEqual:@"conversion"] ? NSMakeSize(520,220) : NSMakeSize(640,[page isEqual:@"typing"] || [page isEqual:@"general"] ? 540 : [page isEqual:@"apps"] ? 460 : 340);
     [_formControllers addObject:controller]; return controller;
 }
 
@@ -223,52 +223,68 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
     [_inputKey setAccessibilityRole:NSAccessibilityButtonRole];
     [_inputKey setAccessibilityHelp:@"Bấm rồi nhấn tổ hợp phím. Delete để xóa, Escape để hủy."];
     [self group:@"" rows:@[
-        [self option:@"Mở cùng macOS" key:@"RunOnStartup" detail:nil],
-        [self row:@"Phím chuyển ngôn ngữ" detail:nil control:_inputKey],
-        [self option:@"Âm báo khi chuyển ngôn ngữ" key:@"SwitchBeep" detail:nil]]];
+        [self option:@"Mở cùng macOS" key:@"RunOnStartup" detail:@"Tự chạy VinaKey sau khi bạn đăng nhập."],
+        [self row:@"Phím chuyển ngôn ngữ" detail:@"Bấm để ghi tổ hợp phím chuyển giữa ABC và tiếng Việt." control:_inputKey],
+        [self option:@"Âm báo khi chuyển ngôn ngữ" key:@"SwitchBeep" detail:@"Phát âm thanh khi chuyển bằng phím tắt."]]];
+    [self compatibilityOptions];
 }
 - (void)typingPage {
     _inputType=[self popup:@[@"Telex",@"VNI",@"Simple Telex 1",@"Simple Telex 2"] action:@selector(changeInputType:)];
     _encoding=[self popup:[OpenKeyManager getTableCodes] action:@selector(changeEncoding:)];
     [_inputType setAccessibilityLabel:@"Kiểu gõ"]; [_encoding setAccessibilityLabel:@"Bảng mã"];
     [self group:@"" rows:@[
-        [self row:@"Kiểu gõ" detail:nil control:_inputType],
+        [self row:@"Kiểu gõ" detail:@"VNI dùng số để đặt dấu; Telex dùng chữ cái." control:_inputType],
         [self row:@"Bảng mã" detail:@"Unicode dùng cho hầu hết ứng dụng." control:_encoding]]];
     [self group:@"Chính tả và dấu" rows:@[
-        [self option:@"Kiểm tra âm tiết" key:@"Spelling" detail:nil],
-        [self option:@"Khôi phục từ không hợp lệ" key:@"RestoreIfInvalidWord" detail:nil],
-        [self option:@"Cho phép z, w, j, f làm phụ âm" key:@"vAllowConsonantZFWJ" detail:nil],
+        [self option:@"Kiểm tra âm tiết" key:@"Spelling" detail:@"Chỉ ghép dấu khi chuỗi phím tạo thành âm tiết tiếng Việt hợp lệ."],
+        [self option:@"Khôi phục từ không hợp lệ" key:@"RestoreIfInvalidWord" detail:@"Trả lại phím gốc khi từ không hợp lệ; cần bật kiểm tra âm tiết."],
+        [self option:@"Cho phép z, w, j, f làm phụ âm" key:@"vAllowConsonantZFWJ" detail:@"Giữ các chữ này như phụ âm khi kiểm tra âm tiết, hữu ích với tên riêng."],
         [self option:@"Đặt dấu oà, uý" key:@"ModernOrthography" detail:@"Tắt để dùng òa, úy."],
-        [self option:@"Viết hoa đầu câu" key:@"UpperCaseFirstChar" detail:nil]]];
+        [self option:@"Viết hoa đầu câu" key:@"UpperCaseFirstChar" detail:@"Tự viết hoa chữ đầu sau dấu kết thúc câu."]]];
     [self group:@"Gõ nhanh" rows:@[
         [self option:@"Telex nhanh" key:@"QuickTelex" detail:@"cc → ch, gg → gi, kk → kh, nn → ng"],
         [self option:@"Phụ âm đầu nhanh" key:@"vQuickStartConsonant" detail:@"f → ph, j → gi, w → qu"],
         [self option:@"Phụ âm cuối nhanh" key:@"vQuickEndConsonant" detail:@"g → ng, h → nh, k → ch"]]];
     [self group:@"Tạm bỏ qua khi gõ" rows:@[
         [self option:@"Chạm Control để tắt kiểm tra chính tả" key:@"vTempOffSpelling" detail:@"Chỉ áp dụng cho từ đang gõ."],
-        [self option:@"Chạm Command để tạm tắt OpenKey" key:@"vTempOffOpenKey" detail:@"Tự bật lại ở từ tiếp theo."]]];
+        [self option:@"Chạm Command để tạm tắt VinaKey" key:@"vTempOffOpenKey" detail:@"Tự bật lại ở từ tiếp theo."]]];
 }
-- (void)compatibilityPage {
-    [self group:@"" rows:@[
+- (void)compatibilityOptions {
+    [self group:@"Tương thích ứng dụng" rows:@[
         [self option:@"Sửa lỗi gợi ý từ" key:@"FixRecommendBrowser" detail:@"Dành cho trình duyệt, Excel và ô tự hoàn thành."],
-        [self option:@"Tương thích Chromium" key:@"vFixChromiumBrowser" detail:nil],
-        [self option:@"Gửi từng phím riêng" key:@"SendKeyStepByStep" detail:nil],
-        [self option:@"Theo bố cục bàn phím hiện tại" key:@"vPerformLayoutCompat" detail:nil],
+        [self option:@"Tương thích Chromium" key:@"vFixChromiumBrowser" detail:@"Dùng cách thay thế ký tự dành cho trình duyệt Chromium khi gõ dấu bị lỗi."],
+        [self option:@"Gửi từng phím riêng" key:@"SendKeyStepByStep" detail:@"Gửi ký tự lần lượt khi ứng dụng không nhận đúng cả chuỗi."],
+        [self option:@"Theo bố cục bàn phím hiện tại" key:@"vPerformLayoutCompat" detail:@"Đọc phím theo bố cục macOS thay vì vị trí phím mặc định."],
         [self option:@"Bỏ qua khi macOS dùng bộ gõ khác" key:@"vOtherLanguage" detail:@"Tránh hai bộ gõ cùng xử lý tiếng Việt."]]];
 }
+- (void)aboutPage {
+    NSStackView *identity=[self stack]; identity.alignment=NSLayoutAttributeCenterX; identity.spacing=8;
+    NSImageView *icon=[NSImageView imageViewWithImage:NSApp.applicationIconImage];
+    [icon.widthAnchor constraintEqualToConstant:64].active=YES; [icon.heightAnchor constraintEqualToConstant:64].active=YES;
+    [identity addArrangedSubview:icon];
+    NSTextField *name=Text(@"VinaKey",24,NO); name.font=[NSFont boldSystemFontOfSize:24]; [identity addArrangedSubview:name];
+    NSString *version=[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"Bản thử nghiệm";
+    [identity addArrangedSubview:Text([@"Phiên bản " stringByAppendingString:version],12,YES)];
+    [_content addArrangedSubview:identity];
+    [self group:@"" rows:@[
+        [self row:@"Vina Design Store" detail:@"Phát triển và phản hồi tại GitHub." control:[self button:@"GitHub…" action:@selector(openProject:)]],
+        [self row:@"Giấy phép" detail:@"Xem giấy phép và thông tin nguồn gốc." control:[self button:@"Xem…" action:@selector(openLicense:)]]]];
+}
+- (void)openProject:(id)sender { [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/vinadesignstore/vinakey"]]; }
+- (void)openLicense:(id)sender { [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/vinadesignstore/vinakey/blob/main/NOTICE.md"]]; }
 - (NSViewController *)permissionGate {
     NSViewController *controller=[NSViewController new]; controller.view=[NSView new];
     NSStackView *stack=[self stack]; stack.alignment=NSLayoutAttributeCenterX; stack.spacing=18;
     [stack addArrangedSubview:[NSImageView imageViewWithImage:NSApp.applicationIconImage]];
     NSImageView *icon=(NSImageView *)stack.arrangedSubviews.firstObject;
     [icon.widthAnchor constraintEqualToConstant:64].active=YES; [icon.heightAnchor constraintEqualToConstant:64].active=YES;
-    NSTextField *title=Text(@"Cho phép OpenKey hỗ trợ nhập liệu",20,NO); title.font=[NSFont boldSystemFontOfSize:20];
+    NSTextField *title=Text(@"Cho phép VinaKey hỗ trợ nhập liệu",20,NO); title.font=[NSFont boldSystemFontOfSize:20];
     title.alignment=NSTextAlignmentCenter; [stack addArrangedSubview:title];
-    NSTextField *message=Text(@"OpenKey cần quyền Trợ năng để nhận và thay thế phím khi bạn gõ tiếng Việt.",13,YES);
+    NSTextField *message=Text(@"VinaKey cần quyền Trợ năng để nhận và thay thế phím khi bạn gõ tiếng Việt.",13,YES);
     message.alignment=NSTextAlignmentCenter; [stack addArrangedSubview:message];
     [message.widthAnchor constraintLessThanOrEqualToConstant:440].active=YES;
     NSButton *open=[self button:@"Mở Cài đặt hệ thống…" action:@selector(openAccessibility:)]; open.keyEquivalent=@"\r";
-    [stack addArrangedSubview:open]; [stack addArrangedSubview:[self button:@"Thoát OpenKey" action:@selector(quit:)]];
+    [stack addArrangedSubview:open]; [stack addArrangedSubview:[self button:@"Thoát VinaKey" action:@selector(quit:)]];
     [controller.view addSubview:stack]; stack.translatesAutoresizingMaskIntoConstraints=NO;
     [NSLayoutConstraint activateConstraints:@[
         [stack.centerXAnchor constraintEqualToAnchor:controller.view.centerXAnchor],
@@ -278,7 +294,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
     return controller;
 }
 - (void)showPage:(NSString *)page {
-    if (![@[@"general",@"typing",@"apps",@"compatibility"] containsObject:page]) return;
+    if (![@[@"general",@"typing",@"apps",@"about"] containsObject:page]) return;
     for (NSUInteger i=0;i<_panes.tabViewItems.count;i++) if ([_panes.tabViewItems[i].identifier isEqual:page]) _panes.selectedTabViewItemIndex=i;
     [self refresh];
 }
@@ -307,7 +323,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
         if (_utilityWC.window.sheetParent) [self.window endSheet:_utilityWC.window];
         [_utilityWC close];
         _gate=[self permissionGate]; self.window.toolbar=nil; self.window.contentViewController=_gate;
-        self.window.title=@"Thiết lập OpenKey"; [self.window setContentSize:NSMakeSize(640,380)]; _gateVisible=YES;
+        self.window.title=@"Thiết lập VinaKey"; [self.window setContentSize:NSMakeSize(640,380)]; _gateVisible=YES;
     } else if (trusted && (_gateVisible || !self.window.contentViewController)) {
         BOOL dismiss=_gateVisible && _shown;
         self.window.contentViewController=_panes; (void)_panes.view;
@@ -368,30 +384,34 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
     if (_utilityWC.window.sheetParent) return;
     if (_auxForm) [_formControllers removeObject:_auxForm];
     _auxForm=[self formForPage:page];
-    NSWindow *window=[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,640,420) styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+    NSWindow *window=[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,520,280) styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
     window.title=title;
     NSViewController *root=[NSViewController new]; root.view=[NSView new];
     [root addChildViewController:_auxForm]; window.contentViewController=root;
     NSView *form=_auxForm.view; [root.view addSubview:form]; form.translatesAutoresizingMaskIntoConstraints=NO;
     _utilityWC=[[NSWindowController alloc] initWithWindow:window];
-    NSButton *done=[self button:@"Xong" action:@selector(closeUtility:)]; done.keyEquivalent=@"\r";
+    NSButton *done=[self button:@"Đóng" action:@selector(closeUtility:)]; done.keyEquivalent=@"\e";
+    NSButton *convert=[self button:@"Chuyển mã" action:@selector(convertClipboard:)]; convert.keyEquivalent=@"\r";
+    [root.view addSubview:convert]; convert.translatesAutoresizingMaskIntoConstraints=NO;
     [root.view addSubview:done]; done.translatesAutoresizingMaskIntoConstraints=NO;
     [NSLayoutConstraint activateConstraints:@[
         [form.topAnchor constraintEqualToAnchor:root.view.topAnchor],
         [form.leadingAnchor constraintEqualToAnchor:root.view.leadingAnchor],
         [form.trailingAnchor constraintEqualToAnchor:root.view.trailingAnchor],
         [form.bottomAnchor constraintEqualToAnchor:done.topAnchor constant:-12],
-        [done.trailingAnchor constraintEqualToAnchor:root.view.trailingAnchor constant:-20],
+        [convert.trailingAnchor constraintEqualToAnchor:root.view.trailingAnchor constant:-20],
+        [convert.bottomAnchor constraintEqualToAnchor:done.bottomAnchor],
+        [done.trailingAnchor constraintEqualToAnchor:convert.leadingAnchor constant:-8],
         [done.bottomAnchor constraintEqualToAnchor:root.view.bottomAnchor constant:-12]]];
-    [window setContentSize:NSMakeSize(640,420)];
+    [window setContentSize:NSMakeSize(520,280)];
     [self.window beginSheet:window completionHandler:nil];
 }
 - (void)closeUtility:(id)sender { [self.window endSheet:_utilityWC.window]; [_utilityWC close]; }
 - (void)showConversion { [self showUtility:@"conversion" title:@"Chuyển mã văn bản"]; }
 - (void)appsPage {
     [self group:@"" rows:@[
-        [self option:@"Nhớ ngôn ngữ theo ứng dụng" key:@"UseSmartSwitchKey" detail:nil],
-        [self option:@"Nhớ bảng mã theo ứng dụng" key:@"vRememberCode" detail:nil]]];
+        [self option:@"Nhớ ngôn ngữ theo ứng dụng" key:@"UseSmartSwitchKey" detail:@"Khôi phục ABC hoặc tiếng Việt khi quay lại từng ứng dụng."],
+        [self option:@"Nhớ bảng mã theo ứng dụng" key:@"vRememberCode" detail:@"Giữ bảng mã riêng cho từng ứng dụng thay vì dùng chung."]]];
     _rulesTable=[self tableWithColumns:@[@"Ứng dụng",@"Ngôn ngữ"] identifiers:@[@"app",@"rule"] height:200];
     [self reloadRules];
     [_content addArrangedSubview:[NSStackView stackViewWithViews:@[[self button:@"Thêm…" action:@selector(addApp:)],
@@ -401,10 +421,9 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
 - (void)conversionPage {
     _fromCode=[self popup:[OpenKeyManager getTableCodes] action:@selector(changeConversion:)];
     _toCode=[self popup:[OpenKeyManager getTableCodes] action:@selector(changeConversion:)];
-    [self group:@"" rows:@[[self row:@"Từ bảng mã" detail:nil control:_fromCode], [self row:@"Sang bảng mã" detail:nil control:_toCode]]];
+    [self group:@"Chuyển mã văn bản" rows:@[[self row:@"Từ bảng mã" detail:nil control:_fromCode], [self row:@"Sang bảng mã" detail:nil control:_toCode]]];
     [_fromCode selectItemAtIndex:MIN(4,convertToolFromCode)]; [_toCode selectItemAtIndex:MIN(4,convertToolToCode)];
-    [_content addArrangedSubview:[self button:@"Chuyển mã clipboard" action:@selector(convertClipboard:)]];
-    [self note:@"Sao chép văn bản trước khi chuyển. Kết quả sẽ thay thế nội dung clipboard."];
+    [self note:@"Chuyển văn bản đã sao chép sang bảng mã khác. Sau đó dán kết quả vào ứng dụng của bạn."];
 }
 - (NSTableView *)tableWithColumns:(NSArray *)titles identifiers:(NSArray *)identifiers height:(CGFloat)height {
     NSScrollView *scroll = [NSScrollView new]; scroll.hasVerticalScroller = YES;
@@ -432,7 +451,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
         NSURL *url=[[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:bundleID];
         return [NSTextField labelWithString:url ? [[NSFileManager defaultManager] displayNameAtPath:url.path] : bundleID];
     }
-    NSPopUpButton *popup=[self popup:@[@"English",@"Tiếng Việt",@"Nhớ lựa chọn"] action:@selector(changeRule:)];
+    NSPopUpButton *popup=[self popup:@[@"ABC",@"Tiếng Việt",@"Nhớ lựa chọn"] action:@selector(changeRule:)];
     id value=[self rules][bundleID];
     NSInteger selected=[value isKindOfClass:NSNumber.class] ? [value integerValue] : 2;
     [popup selectItemAtIndex:MAX(0,MIN(2,selected))]; popup.identifier=bundleID;

@@ -40,6 +40,7 @@ BOOL MJAccessibilityIsEnabled(void) { return trusted; }
 @end
 @interface AppDelegate (MenuTests)
 -(void)createStatusBarMenu;
+-(NSImage *)inputBadge:(NSString *)label;
 -(void)selectMenuSource:(NSMenuItem *)sender;
 @end
 @interface MenuDelegate : AppDelegate
@@ -63,6 +64,15 @@ int main() { @autoreleasepool {
         class_getClassMethod(NSUserDefaults.class,@selector(menuTestDefaults)));
     [NSApplication sharedApplication];
     MenuDelegate *delegate=[MenuDelegate new]; [delegate createStatusBarMenu];
+    NSBitmapImageRep *badge=[NSBitmapImageRep imageRepWithData:[[delegate inputBadge:@"EN"] TIFFRepresentation]];
+    NSUInteger filled=0,cutout=0;
+    for (NSInteger y=badge.pixelsHigh/4;y<badge.pixelsHigh*3/4;y++)
+        for (NSInteger x=badge.pixelsWide/4;x<badge.pixelsWide*3/4;x++) {
+            CGFloat alpha=[badge colorAtX:x y:y].alphaComponent;
+            if (alpha>0.9) filled++; if (alpha<0.1) cutout++;
+        }
+    assert(filled>20 && cutout>5); // Solid template badge with transparent letter cutouts.
+
     method_exchangeImplementations(class_getInstanceMethod(NSWorkspace.class,@selector(frontmostApplication)),
         class_getInstanceMethod(NSWorkspace.class,@selector(menuTestApp)));
     NSArray<NSMenuItem *> *styles=[delegate valueForKey:@"menuTypingStyles"];
@@ -79,7 +89,7 @@ int main() { @autoreleasepool {
     assert(saves==4);
     [delegate selectMenuSource:english];
     assert(vLanguage==0 && vInputType==3 && saves==5 && settingsOpened==0);
-    assert(english.state==NSControlStateValueOn && [status.button.title isEqual:@"English"]);
+    assert(english.state==NSControlStateValueOn && [status.button.title isEqual:@"ABC"]);
     for (NSMenuItem *item in styles) assert(item.state==NSControlStateValueOff);
     [prefs setObject:@{@"org.openkey.menu-test":@1} forKey:@"AppLanguageRules"];
     [delegate menuWillOpen:[delegate valueForKey:@"theMenu"]]; assert(!english.enabled && styles[0].enabled);

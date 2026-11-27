@@ -143,10 +143,7 @@ extern bool convertToolDontAlertWhenCompleted;
     // Settings and macros remain usable before Accessibility is granted.
     [OpenKeyManager prepareEngine];
     
-    //check update if enable
-    NSInteger dontCheckUpdate = [[NSUserDefaults standardUserDefaults] integerForKey:@"DontCheckUpdate"];
-    if (!dontCheckUpdate)
-        [OpenKeyManager checkNewVersion:nil callbackFunc:nil];
+    // VinaKey releases are distributed separately from the upstream OpenKey updater.
     
     //correct run on startup
     NSInteger val = [[NSUserDefaults standardUserDefaults] integerForKey:@"RunOnStartup"];
@@ -168,9 +165,10 @@ extern bool convertToolDontAlertWhenCompleted;
 - (NSImage *)inputBadge:(NSString *)label {
     NSImage *image=[[NSImage alloc] initWithSize:NSMakeSize(26,18)];
     [image lockFocus];
-    [NSColor.blackColor setStroke];
+    [NSColor.blackColor setFill];
     NSBezierPath *outline=[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(1,1,24,16) xRadius:4 yRadius:4];
-    outline.lineWidth=1.2; [outline stroke];
+    [outline fill];
+    CGContextSetBlendMode(NSGraphicsContext.currentContext.CGContext,kCGBlendModeDestinationOut);
     NSDictionary *attributes=@{NSFontAttributeName:[NSFont boldSystemFontOfSize:10], NSForegroundColorAttributeName:NSColor.blackColor};
     NSSize size=[label sizeWithAttributes:attributes];
     [label drawAtPoint:NSMakePoint((26-size.width)/2,(18-size.height)/2) withAttributes:attributes];
@@ -180,8 +178,8 @@ extern bool convertToolDontAlertWhenCompleted;
 - (void)createStatusBarMenu {
     statusItem=[[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
     theMenu=[NSMenu new]; theMenu.autoenablesItems=NO; theMenu.delegate=self;
-    menuConnection=[self item:@"Cho phép OpenKey…" action:@selector(reconnect:) key:@"" inMenu:theMenu];
-    menuEnglish=[self item:@"English" action:@selector(selectMenuSource:) key:@"" inMenu:theMenu]; menuEnglish.tag=-1;
+    menuConnection=[self item:@"Cho phép VinaKey…" action:@selector(reconnect:) key:@"" inMenu:theMenu];
+    menuEnglish=[self item:@"ABC" action:@selector(selectMenuSource:) key:@"" inMenu:theMenu]; menuEnglish.tag=-1;
     menuEnglish.image=[self inputBadge:@"EN"];
     NSMutableArray *styles=[NSMutableArray new];
     for (NSString *name in [self typingStyleNames]) {
@@ -193,12 +191,12 @@ extern bool convertToolDontAlertWhenCompleted;
     [self item:@"Cài đặt…" action:@selector(onControlPanelSelected) key:@"," inMenu:theMenu];
     [self item:@"Chuyển mã văn bản…" action:@selector(onConvertTool) key:@"" inMenu:theMenu];
     [theMenu addItem:NSMenuItem.separatorItem];
-    [self item:@"Giới thiệu OpenKey" action:@selector(onAboutSelected) key:@"" inMenu:theMenu];
-    [self item:@"Thoát OpenKey" action:@selector(quit:) key:@"q" inMenu:theMenu];
+    [self item:@"Giới thiệu VinaKey" action:@selector(onAboutSelected) key:@"" inMenu:theMenu];
+    [self item:@"Thoát VinaKey" action:@selector(quit:) key:@"q" inMenu:theMenu];
     statusItem.menu=theMenu;
     NSMenu *main=[NSMenu new], *application=[NSMenu new], *edit=[NSMenu new], *tools=[NSMenu new];
     NSMenuItem *app=[NSMenuItem new]; app.submenu=application; [main addItem:app];
-    [self item:@"Giới thiệu OpenKey" action:@selector(onAboutSelected) key:@"" inMenu:application];
+    [self item:@"Giới thiệu VinaKey" action:@selector(onAboutSelected) key:@"" inMenu:application];
     [application addItem:NSMenuItem.separatorItem];
     [self item:@"Cài đặt…" action:@selector(onControlPanelSelected) key:@"," inMenu:application];
     [self item:@"Kiểm tra cập nhật…" action:@selector(checkUpdate:) key:@"" inMenu:application];
@@ -206,8 +204,8 @@ extern bool convertToolDontAlertWhenCompleted;
     NSMenuItem *services=[application addItemWithTitle:@"Dịch vụ" action:nil keyEquivalent:@""];
     services.submenu=[NSMenu new]; NSApp.servicesMenu=services.submenu;
     [application addItem:NSMenuItem.separatorItem];
-    NSMenuItem *hide=[application addItemWithTitle:@"Ẩn OpenKey" action:@selector(hide:) keyEquivalent:@"h"]; hide.target=NSApp;
-    [self item:@"Thoát OpenKey" action:@selector(quit:) key:@"q" inMenu:application];
+    NSMenuItem *hide=[application addItemWithTitle:@"Ẩn VinaKey" action:@selector(hide:) keyEquivalent:@"h"]; hide.target=NSApp;
+    [self item:@"Thoát VinaKey" action:@selector(quit:) key:@"q" inMenu:application];
     NSMenuItem *editItem=[[NSMenuItem alloc] initWithTitle:@"Sửa" action:nil keyEquivalent:@""]; editItem.submenu=edit; [main addItem:editItem];
     [edit addItemWithTitle:@"Hoàn tác" action:@selector(undo:) keyEquivalent:@"z"];
     [edit addItem:NSMenuItem.separatorItem];
@@ -227,7 +225,7 @@ extern bool convertToolDontAlertWhenCompleted;
 - (void)menuWillOpen:(NSMenu *)menu {
     BOOL trusted=MJAccessibilityIsEnabled(); BOOL active=[OpenKeyManager isActive];
     menuConnection.hidden=trusted && active;
-    menuConnection.title=trusted ? @"Kết nối lại…" : @"Cho phép OpenKey…";
+    menuConnection.title=trusted ? @"Kết nối lại…" : @"Cho phép VinaKey…";
     NSInteger fixed=[self fixedInputLanguage];
     menuEnglish.enabled=trusted && active && fixed!=1;
     for (NSMenuItem *item in menuTypingStyles) item.enabled=trusted && active && fixed!=0;
@@ -246,7 +244,7 @@ extern bool convertToolDontAlertWhenCompleted;
     if ([OpenKeyManager initEventTap]) OnActiveAppChanged();
 }
 - (void)quit:(id)sender { [NSApp terminate:nil]; }
-- (void)checkUpdate:(id)sender { [OpenKeyManager checkNewVersion:nil callbackFunc:nil]; }
+- (void)checkUpdate:(id)sender { [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/vinadesignstore/vinakey/releases"]]; }
 - (void)setQuickConvertString {} // Retained for legacy controller callers; conversion is a Tools command.
 
 -(void)loadDefaultConfig {
@@ -284,7 +282,7 @@ extern bool convertToolDontAlertWhenCompleted;
 }
 
 -(void)setRunOnStartup:(BOOL)val {
-    CFStringRef appId = (__bridge CFStringRef)@"com.tuyenmai.OpenKeyHelper";
+    CFStringRef appId = (__bridge CFStringRef)@"com.vinadesignstore.VinaKeyHelper";
     SMLoginItemSetEnabled(appId, val);
 }
 
@@ -308,14 +306,14 @@ extern bool convertToolDontAlertWhenCompleted;
     if (!vSwitchKeyStatus) vSwitchKeyStatus=DEFAULT_SWITCH_STATUS;
     for (NSMenuItem *item in menuTypingStyles) item.state=vLanguage && vInputType==item.tag ? NSControlStateValueOn : NSControlStateValueOff;
     menuEnglish.state=vLanguage ? NSControlStateValueOff : NSControlStateValueOn;
-    NSString *name=vLanguage ? [self typingStyleNames][MAX(0,MIN(3,vInputType))] : @"English";
+    NSString *name=vLanguage ? [self typingStyleNames][MAX(0,MIN(3,vInputType))] : @"ABC";
     NSString *badge=vLanguage ? @"VI" : @"EN";
     if (![statusItem.button.title isEqual:name]) {
         statusItem.button.image=[self inputBadge:badge];
         statusItem.button.imagePosition=NSImageLeft; statusItem.button.title=name;
     }
-    statusItem.button.toolTip=[@"OpenKey — " stringByAppendingString:name];
-    statusItem.button.accessibilityLabel=[NSString stringWithFormat:@"OpenKey, %@",name];
+    statusItem.button.toolTip=[@"VinaKey — " stringByAppendingString:name];
+    statusItem.button.accessibilityLabel=[NSString stringWithFormat:@"VinaKey, %@",name];
 }
 
 -(void)setInputLanguage:(int)language {
@@ -398,8 +396,7 @@ extern bool convertToolDontAlertWhenCompleted;
 }
 
 -(void) onAboutSelected {
-    [NSApp orderFrontStandardAboutPanelWithOptions:@{NSAboutPanelOptionCredits:[[NSAttributedString alloc] initWithString:@"Bộ gõ tiếng Việt nguồn mở\nMai Vũ Tuyên và cộng đồng đóng góp · GPL-3.0"]}];
-    [NSApp activateIgnoringOtherApps:YES];
+    [self onControlPanelSelected]; [_settingsWC showPage:@"about"];
 }
 
 #pragma mark -Short key event
