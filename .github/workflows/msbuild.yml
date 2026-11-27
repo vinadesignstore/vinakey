@@ -1,10 +1,8 @@
 name: MSBuild
 
+# Inherited OpenKey Windows build. VinaKey does not ship Windows, so it only runs on demand.
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+  workflow_dispatch:
 
 env:
   # Path to the solution file relative to the root of the project.

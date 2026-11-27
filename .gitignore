@@ -11,3 +11,9 @@
 
 # Rust build output (the lockfile is committed).
 /Sources/OpenKey/engine-rust/target/
+
+# macOS and Xcode per-user state.
+.DS_Store
+xcuserdata/
+*.xcuserstate
+__pycache__/
