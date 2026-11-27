@@ -32,7 +32,7 @@ python3 scripts/check-rust-engine.py
 
 Bản xem trước mã nguồn, chưa phải bản phát hành ổn định. Build universal arm64/x86_64 đã được kiểm tra với Xcode 27.2 và deployment target macOS 12; hệ thống cũ hơn chưa được kiểm tra thực tế. Giao diện SwiftUI grouped form dùng từ macOS 13; hệ thống cũ dùng AppKit.
 
-Các kiểm tra native không thay thế kiểm tra bàn phím thật. Hành vi khôi phục ngôn ngữ qua ứng dụng và menu thanh trạng thái vẫn cần kiểm tra trực tiếp. Chưa triển khai quy trình ký Developer ID, notarization và phát hành. Kiểm tra cập nhật mở trang Releases của VinaKey, không tải bộ cập nhật OpenKey. Login-item API migration thuộc milestone 5; không có helper đăng nhập mới được phát hành trong bản này.
+Các kiểm tra native không thay thế kiểm tra bàn phím thật. Hành vi khôi phục ngôn ngữ qua ứng dụng và menu thanh trạng thái vẫn cần kiểm tra trực tiếp. Chưa triển khai quy trình ký Developer ID, notarization và phát hành. Kiểm tra cập nhật mở trang Releases của VinaKey, không tải bộ cập nhật OpenKey. Mở cùng macOS dùng SMAppService từ macOS 13, không cần helper riêng. macOS 12 có thể thêm ứng dụng vào Mục đăng nhập thủ công. Xem [RELEASE.md](RELEASE.md) để build gói xem trước và chuẩn bị ký/notarize; chưa có bản phát hành công khai đã ký.
 
 Mã Windows/Linux gốc được giữ trong lịch sử/cây nguồn và không được phát hành dưới tên VinaKey trong bản này.
 
