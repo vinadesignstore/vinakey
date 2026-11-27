@@ -12,6 +12,7 @@ Start from a clean checkout of the commit being released:
 cargo test --locked --manifest-path Sources/OpenKey/engine-rust/Cargo.toml
 cargo clippy --locked --manifest-path Sources/OpenKey/engine-rust/Cargo.toml --all-targets -- -D warnings
 python3 scripts/check-rust-engine.py
+python3 scripts/fuzz-rust-engine.py --cases 100000 --seed 1
 sh scripts/check-macos-input.sh
 ```
 

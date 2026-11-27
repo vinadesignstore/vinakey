@@ -13,13 +13,11 @@
 #include <libproc.h>
 #include <sys/proc_info.h>
 #import "AppDelegate.h"
-#import "ViewController.h"
 #import "OpenKeyManager.h"
 #import "MJAccessibilityUtils.h"
 #import "SettingsWindowController.h"
 
 AppDelegate* appDelegate;
-extern ViewController* viewController;
 extern void OnTableCodeChange(void);
 extern void OnInputMethodChanged(void);
 extern void RequestNewSession(void);
@@ -162,16 +160,17 @@ extern bool convertToolDontAlertWhenCompleted;
     NSMenuItem *item=[menu addItemWithTitle:title action:action keyEquivalent:key]; item.target=self; return item;
 }
 - (NSImage *)inputBadge:(NSString *)label {
-    NSImage *image=[[NSImage alloc] initWithSize:NSMakeSize(26,18)];
-    [image lockFocus];
-    [NSColor.blackColor setFill];
-    NSBezierPath *outline=[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(1,1,24,16) xRadius:4 yRadius:4];
-    [outline fill];
-    CGContextSetBlendMode(NSGraphicsContext.currentContext.CGContext,kCGBlendModeDestinationOut);
-    NSDictionary *attributes=@{NSFontAttributeName:[NSFont boldSystemFontOfSize:10], NSForegroundColorAttributeName:NSColor.blackColor};
-    NSSize size=[label sizeWithAttributes:attributes];
-    [label drawAtPoint:NSMakePoint((26-size.width)/2,(18-size.height)/2) withAttributes:attributes];
-    [image unlockFocus]; image.template=YES; return image;
+    // Drawn on demand, so it renders sharply at every backing scale.
+    NSImage *image=[NSImage imageWithSize:NSMakeSize(26,18) flipped:NO drawingHandler:^BOOL(NSRect rect) {
+        [NSColor.blackColor setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(1,1,24,16) xRadius:4 yRadius:4] fill];
+        CGContextSetBlendMode(NSGraphicsContext.currentContext.CGContext,kCGBlendModeDestinationOut);
+        NSDictionary *attributes=@{NSFontAttributeName:[NSFont boldSystemFontOfSize:10], NSForegroundColorAttributeName:NSColor.blackColor};
+        NSSize size=[label sizeWithAttributes:attributes];
+        [label drawAtPoint:NSMakePoint((26-size.width)/2,(18-size.height)/2) withAttributes:attributes];
+        return YES;
+    }];
+    image.template=YES; image.accessibilityDescription=label; return image;
 }
 - (NSArray<NSString *> *)typingStyleNames { return @[@"Telex",@"VNI",@"Simple Telex 1",@"Simple Telex 2"]; }
 - (void)createStatusBarMenu {
@@ -204,9 +203,14 @@ extern bool convertToolDontAlertWhenCompleted;
     services.submenu=[NSMenu new]; NSApp.servicesMenu=services.submenu;
     [application addItem:NSMenuItem.separatorItem];
     NSMenuItem *hide=[application addItemWithTitle:@"Ẩn VinaKey" action:@selector(hide:) keyEquivalent:@"h"]; hide.target=NSApp;
+    NSMenuItem *hideOthers=[application addItemWithTitle:@"Ẩn các ứng dụng khác" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
+    hideOthers.keyEquivalentModifierMask=NSEventModifierFlagCommand|NSEventModifierFlagOption; hideOthers.target=NSApp;
+    [application addItemWithTitle:@"Hiện tất cả" action:@selector(unhideAllApplications:) keyEquivalent:@""].target=NSApp;
+    [application addItem:NSMenuItem.separatorItem];
     [self item:@"Thoát VinaKey" action:@selector(quit:) key:@"q" inMenu:application];
     NSMenuItem *editItem=[[NSMenuItem alloc] initWithTitle:@"Sửa" action:nil keyEquivalent:@""]; editItem.submenu=edit; [main addItem:editItem];
-    [edit addItemWithTitle:@"Hoàn tác" action:@selector(undo:) keyEquivalent:@"z"];
+    [edit addItemWithTitle:@"Hoàn tác" action:NSSelectorFromString(@"undo:") keyEquivalent:@"z"];
+    [edit addItemWithTitle:@"Làm lại" action:NSSelectorFromString(@"redo:") keyEquivalent:@"Z"];
     [edit addItem:NSMenuItem.separatorItem];
     [edit addItemWithTitle:@"Cắt" action:@selector(cut:) keyEquivalent:@"x"];
     [edit addItemWithTitle:@"Sao chép" action:@selector(copy:) keyEquivalent:@"c"];
@@ -214,6 +218,14 @@ extern bool convertToolDontAlertWhenCompleted;
     [edit addItemWithTitle:@"Chọn tất cả" action:@selector(selectAll:) keyEquivalent:@"a"];
     NSMenuItem *toolItem=[[NSMenuItem alloc] initWithTitle:@"Công cụ" action:nil keyEquivalent:@""]; toolItem.submenu=tools; [main addItem:toolItem];
     [self item:@"Chuyển mã văn bản…" action:@selector(onConvertTool) key:@"" inMenu:tools];
+    // Window menu: Command-W/M act on the key window through the responder chain.
+    NSMenu *windows=[[NSMenu alloc] initWithTitle:@"Cửa sổ"];
+    NSMenuItem *windowItem=[[NSMenuItem alloc] initWithTitle:@"Cửa sổ" action:nil keyEquivalent:@""]; windowItem.submenu=windows; [main addItem:windowItem];
+    [windows addItemWithTitle:@"Đóng" action:@selector(performClose:) keyEquivalent:@"w"];
+    [windows addItemWithTitle:@"Thu nhỏ" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
+    [windows addItem:NSMenuItem.separatorItem];
+    [windows addItemWithTitle:@"Đưa tất cả ra trước" action:@selector(arrangeInFront:) keyEquivalent:@""];
+    NSApp.windowsMenu=windows;
     NSApp.mainMenu=main;
     [self fillData];
 }
@@ -259,7 +271,7 @@ extern bool convertToolDontAlertWhenCompleted;
     vFixRecommendBrowser = 1; [[NSUserDefaults standardUserDefaults] setInteger:vFixRecommendBrowser forKey:@"FixRecommendBrowser"];
     vUseMacro = 0; [[NSUserDefaults standardUserDefaults] setInteger:vUseMacro forKey:@"UseMacro"];
     vUseMacroInEnglishMode = 0; [[NSUserDefaults standardUserDefaults] setInteger:vUseMacroInEnglishMode forKey:@"UseMacroInEnglishMode"];
-    vSendKeyStepByStep = 0;[[NSUserDefaults standardUserDefaults] setInteger:vUseMacroInEnglishMode forKey:@"SendKeyStepByStep"];
+    vSendKeyStepByStep = 0;[[NSUserDefaults standardUserDefaults] setInteger:vSendKeyStepByStep forKey:@"SendKeyStepByStep"];
     vUseSmartSwitchKey = 0;[[NSUserDefaults standardUserDefaults] setInteger:vUseSmartSwitchKey forKey:@"UseSmartSwitchKey"];
     vUpperCaseFirstChar = 0;[[NSUserDefaults standardUserDefaults] setInteger:vUpperCaseFirstChar forKey:@"UpperCaseFirstChar"];
     vTempOffSpelling = 0;[[NSUserDefaults standardUserDefaults] setInteger:vTempOffSpelling forKey:@"vTempOffSpelling"];
@@ -277,7 +289,6 @@ extern bool convertToolDontAlertWhenCompleted;
     [[NSUserDefaults standardUserDefaults] setInteger:0 forKey:@"RunOnStartup"];
 
     [self fillData];
-    [viewController fillData];
 }
 
 -(BOOL)runOnStartupEnabled {
@@ -337,7 +348,6 @@ extern bool convertToolDontAlertWhenCompleted;
     vLanguage = language ? 1 : 0;
     [[NSUserDefaults standardUserDefaults] setInteger:vLanguage forKey:@"InputMethod"];
     [self fillData];
-    [viewController fillData];
 }
 
 -(void)onImputMethodChanged:(BOOL)willNotify {
@@ -350,7 +360,6 @@ extern bool convertToolDontAlertWhenCompleted;
     [[NSUserDefaults standardUserDefaults] setInteger:intInputMethod forKey:@"InputMethod"];
 
     [self fillData];
-    [viewController fillData];
     
     if (willNotify)
         OnInputMethodChanged();
@@ -373,14 +382,12 @@ extern bool convertToolDontAlertWhenCompleted;
     [[NSUserDefaults standardUserDefaults] setInteger:index forKey:@"InputType"];
     vInputType = index;
     [self fillData];
-    [viewController fillData];
 }
 
 - (void)onCodeTableChanged:(int)index {
     [[NSUserDefaults standardUserDefaults] setInteger:index forKey:@"CodeTable"];
     vCodeTable = index;
     [self fillData];
-    [viewController fillData];
     OnTableCodeChange();
 }
 
@@ -409,7 +416,8 @@ extern bool convertToolDontAlertWhenCompleted;
     if (!_settingsWC) _settingsWC = [[SettingsWindowController alloc] init];
     [_settingsWC showWindow:nil];
     [_settingsWC.window makeKeyAndOrderFront:nil];
-    [NSApp activateIgnoringOtherApps:YES];
+    if (@available(macOS 14.0,*)) [NSApp activate];
+    else [NSApp activateIgnoringOtherApps:YES];
 }
 
 -(void) onAboutSelected {
@@ -419,7 +427,6 @@ extern bool convertToolDontAlertWhenCompleted;
 #pragma mark -Short key event
 -(void)onSwitchLanguage {
     [self onInputMethodSelected];
-    [viewController fillData];
 }
 
 #pragma mark Reset OpenKey after mac computer awake

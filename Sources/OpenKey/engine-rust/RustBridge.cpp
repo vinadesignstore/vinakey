@@ -45,7 +45,7 @@ void process(uint32_t event,uint32_t state,uint32_t key,uint32_t caps,bool contr
     hook.newCharCount=result.count;hook.extCode=result.ext;
     std::memcpy(hook.charData,result.chars,sizeof result.chars);
     vCheckSpelling=result.spelling;
-    if (hook.code==vReplaceMaro) Bytes(14).words(hook.macroData);
+    if (hook.code==vReplaceMaro) Bytes(OK_CMD_MACRO_DATA).words(hook.macroData);
 }
 }
 
@@ -65,26 +65,24 @@ void vKeyHandleEvent(const vKeyEvent& event,const vKeyEventState& state,const Ui
 }
 void vEnglishMode(const vKeyEventState& state,const Uint16& data,const bool& caps,const bool& control) {process(0,state,data,caps,control,true);}
 void vTempOffSpellChecking() {if(spellingBefore)vCheckSpelling=!vCheckSpelling;}
-void vSetCheckSpelling() {spellingBefore=vCheckSpelling;ok_engine_option(engine.get(),0,vCheckSpelling);}
-void vTempOffEngine(const bool& off) {ok_engine_option(engine.get(),1,off);}
-wstring utf8ToWideString(const string& str) {std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;return converter.from_bytes(str);}
-string wideStringToUtf8(const wstring& str) {std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;return converter.to_bytes(str);}
+void vSetCheckSpelling() {spellingBefore=vCheckSpelling;ok_engine_option(engine.get(),OK_OPTION_SPELLING_BASELINE,vCheckSpelling);}
+void vTempOffEngine(const bool& off) {ok_engine_option(engine.get(),OK_OPTION_TEMPORARY_OFF,off);}
 
-void initMacroMap(const Byte* data,const int& size) {if(size>=0) Bytes(0,data,size);}
-void getMacroSaveData(vector<Byte>& out) {Bytes(1).bytes(out);}
+void initMacroMap(const Byte* data,const int& size) {if(size>=0) Bytes(OK_CMD_LOAD_MACROS,data,size);}
+void getMacroSaveData(vector<Byte>& out) {Bytes(OK_CMD_SAVE_MACROS).bytes(out);}
 bool findMacro(vector<Uint32>& key,vector<Uint32>& content) {
     for (auto& value:key) value=getCharacterCode(value);
-    Bytes bytes(13,key.data(),key.size()*sizeof(Uint32),vAutoCapsMacro);
+    Bytes bytes(OK_CMD_FIND_MACRO,key.data(),key.size()*sizeof(Uint32),vAutoCapsMacro);
     if(!bytes.value.status) return false;bytes.words(content);return true;
 }
-bool hasMacro(const string& name) {return Bytes(4,name.data(),name.size()).value.status;}
+bool hasMacro(const string& name) {return Bytes(OK_CMD_HAS_MACRO,name.data(),name.size()).value.status;}
 bool addMacro(const string& name,const string& content) {
-    string data=name;data.push_back(0);data+=content;return Bytes(2,data.data(),data.size()).value.status;
+    string data=name;data.push_back(0);data+=content;return Bytes(OK_CMD_ADD_MACRO,data.data(),data.size()).value.status;
 }
-bool deleteMacro(const string& name) {return Bytes(3,name.data(),name.size()).value.status;}
+bool deleteMacro(const string& name) {return Bytes(OK_CMD_DELETE_MACRO,name.data(),name.size()).value.status;}
 void onTableCodeChange() {} // Rust derives encoded macro content for the current table on demand.
 void getAllMacro(vector<vector<Uint32>>& keys,vector<string>& names,vector<string>& contents) {
-    keys.clear();names.clear();contents.clear();Bytes bytes(5);
+    keys.clear();names.clear();contents.clear();Bytes bytes(OK_CMD_LIST_MACROS);
     // Rust returns the same length-prefixed format as persisted macroData.
     if(!bytes.value.status||bytes.value.len<2) return;
     size_t cursor=2;auto data=bytes.value.data;auto size=bytes.value.len;
@@ -94,28 +92,28 @@ void getAllMacro(vector<vector<Uint32>>& keys,vector<string>& names,vector<strin
         string name(reinterpret_cast<char*>(data+cursor),n);cursor+=n;
         if(size-cursor<2) return;size_t m=data[cursor]|(size_t(data[cursor+1])<<8);cursor+=2;
         if(m>size-cursor) return;string content(reinterpret_cast<char*>(data+cursor),m);cursor+=m;
-        vector<Uint32> key;Bytes(15,name.data(),name.size()).words(key);
+        vector<Uint32> key;Bytes(OK_CMD_ENCODE,name.data(),name.size()).words(key);
         keys.push_back(key);names.push_back(name);contents.push_back(content);
     }
 }
-void saveToFile(const string& path) {Bytes bytes(7);if(bytes.value.status){std::ofstream file(path,std::ios::binary);file<<bytes.string();}}
+void saveToFile(const string& path) {Bytes bytes(OK_CMD_EXPORT_MACROS);if(bytes.value.status){std::ofstream file(path,std::ios::binary);file<<bytes.string();}}
 void readFromFile(const string& path,const bool& append) {
     std::ifstream file(path,std::ios::binary);if(!file)return;
     string data((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>());
-    Bytes bytes(6,data.data(),data.size(),append);
+    Bytes bytes(OK_CMD_IMPORT_MACROS,data.data(),data.size(),append);
 }
-void initSmartSwitchKey(const Byte* data,const int& size) {if(size>=0) Bytes(8,data,size);}
-void getSmartSwitchKeySaveData(vector<Byte>& out) {Bytes(9).bytes(out);}
+void initSmartSwitchKey(const Byte* data,const int& size) {if(size>=0) Bytes(OK_CMD_LOAD_APPS,data,size);}
+void getSmartSwitchKeySaveData(vector<Byte>& out) {Bytes(OK_CMD_SAVE_APPS).bytes(out);}
 int getAppInputMethodStatus(const string& bundle,const int& current) {
-    Bytes bytes(10,bundle.data(),bundle.size(),current);int32_t result=-1;
+    Bytes bytes(OK_CMD_GET_APP_LANGUAGE,bundle.data(),bundle.size(),current);int32_t result=-1;
     if(bytes.value.status&&bytes.value.len==sizeof result)std::memcpy(&result,bytes.value.data,sizeof result);return result;
 }
-void setAppInputMethodStatus(const string& bundle,const int& language) {Bytes bytes(11,bundle.data(),bundle.size(),language);}
+void setAppInputMethodStatus(const string& bundle,const int& language) {Bytes bytes(OK_CMD_SET_APP_LANGUAGE,bundle.data(),bundle.size(),language);}
 string convertUtil(const string& source) {
     uint32_t flags=uint32_t(convertToolFromCode)<<24;
     flags|=convertToolToAllCaps?1:0;flags|=convertToolToAllNonCaps?2:0;
     flags|=convertToolToCapsFirstLetter?4:0;flags|=convertToolToCapsEachWord?8:0;flags|=convertToolRemoveMark?16:0;
-    OkBuffer result=ok_engine_command(engine.get(),12,reinterpret_cast<const uint8_t*>(source.data()),source.size(),convertToolToCode,flags);
+    OkBuffer result=ok_engine_command(engine.get(),OK_CMD_CONVERT,reinterpret_cast<const uint8_t*>(source.data()),source.size(),convertToolToCode,flags);
     string out=result.status?string(reinterpret_cast<char*>(result.data),result.len):source;ok_buffer_free(result);return out;
 }
 

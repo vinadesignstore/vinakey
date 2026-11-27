@@ -3,7 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<string>vi</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>vi</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>VinaKey</string>
 	<key>CFBundleExecutable</key>
@@ -30,12 +34,8 @@
 	<false/>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>Used for keyboard</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2019 Tuyen Mai. All rights reserved.</string>
-	<key>NSMainStoryboardFile</key>
-	<string>Main</string>
+	<string>© 2026 Vina Design Store. Dựa trên OpenKey © 2019 Tuyen Mai.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>
