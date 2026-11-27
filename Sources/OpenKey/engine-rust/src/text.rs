@@ -36,10 +36,7 @@ pub fn character_code(data: u32, code: usize) -> u32 {
         } else if data & TONEW_MASK != 0 {
             key |= TONEW_MASK;
         }
-        lookup(table, key)
-            .get(index)
-            .map(|x| x | CHAR_CODE_MASK)
-            .unwrap_or(data)
+        encoded(table, key, index).unwrap_or(data)
     } else {
         let index = if data & TONE_MASK != 0 {
             caps
@@ -48,11 +45,15 @@ pub fn character_code(data: u32, code: usize) -> u32 {
         } else {
             return data;
         };
-        lookup(table, key)
-            .get(index)
-            .map(|x| x | CHAR_CODE_MASK)
-            .unwrap_or(data)
+        encoded(table, key, index).unwrap_or(data)
     }
+}
+/// A zero entry means the table has no glyph for this key; never emit it as U+0000.
+fn encoded(table: &[(u32, &[u32])], key: u32, index: usize) -> Option<u32> {
+    lookup(table, key)
+        .get(index)
+        .filter(|&&x| x != 0)
+        .map(|x| x | CHAR_CODE_MASK)
 }
 pub fn encode(text: &str, code: usize) -> Vec<u32> {
     let mut out = Vec::new();

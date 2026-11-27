@@ -605,9 +605,11 @@ impl Engine {
         }
         self.hook.count = self.hook.backspaces;
     }
-    fn insert_w(&mut self) {
+    /// Returns false when no horn could be applied; the caller then falls back like the C++
+    /// `isChanged = false` path (standalone w/ư reversal or a plain insert).
+    fn insert_w(&mut self) -> bool {
         let Some((s, e, count)) = self.vowels(false) else {
-            return;
+            return true;
         };
         for value in self.word.iter_mut().take(e + 1).skip(s) {
             *value &= !TONE_MASK;
@@ -655,10 +657,12 @@ impl Engine {
                 } else {
                     self.disabled = true;
                     self.hook.code = 0;
+                    self.output_suffix(s);
+                    return false;
                 }
                 self.output_suffix(s);
             }
-            return;
+            return true;
         }
         self.hook.backspaces = 0;
         for i in (s..self.len).rev() {
@@ -687,6 +691,7 @@ impl Engine {
             }
         }
         self.hook.count = self.hook.backspaces;
+        true
     }
     fn standalone(&mut self, data: u32, caps: bool, target: u32) {
         if self.len > 0 && self.ch(self.len - 1) == target && self.w(self.len - 1) & TONEW_MASK != 0
@@ -785,16 +790,18 @@ impl Engine {
             }
             return;
         }
+        // VNI 6 applies to the latest a/o/e. Compare the bare character: C++ stored this in a
+        // Uint16, dropping caps/tone/mark bits. Without a target, 6 is an ordinary key.
         let last_aeo = (0..self.len)
             .rev()
-            .find(|&i| [KEY_A, KEY_O, KEY_E].contains(&self.ch(i)))
-            .unwrap_or(0);
+            .map(|i| self.ch(i))
+            .find(|c| [KEY_A, KEY_O, KEY_E].contains(c));
         let key = if self.cfg.input_type != 1 {
             data
         } else if [KEY_7, KEY_8].contains(&data) {
             KEY_W
         } else if data == KEY_6 {
-            self.w(last_aeo)
+            last_aeo.unwrap_or(data)
         } else {
             data
         };
@@ -814,11 +821,17 @@ impl Engine {
                         && self.ch(e) == KEY_A
                         && (e == 0 || self.ch(e - 1) != KEY_U))
                         || (data == KEY_8 && [KEY_O, KEY_U].contains(&self.ch(e))));
-                if !skip {
-                    self.insert_w();
+                if !skip && !self.insert_w() {
+                    self.insert_unchanged(data, caps);
                 }
             }
-        } else if data == KEY_W && self.cfg.input_type != 2 {
+        } else {
+            self.insert_unchanged(data, caps);
+        }
+    }
+    /// C++ `handleMainKey` fallback when no vowel transformation applied.
+    fn insert_unchanged(&mut self, data: u32, caps: bool) {
+        if data == KEY_W && self.cfg.input_type != 2 {
             self.standalone(data, caps, KEY_U);
         } else {
             self.insert(data, caps, true);
