@@ -77,7 +77,15 @@ The macOS product is now **VinaKey** (`com.vinadesignstore.vinakey`), published 
 
 Current tabs are **Chung**, **Gõ tiếng Việt**, **Ứng dụng** and **Giới thiệu**. Compatibility controls are a described section inside Chung. Every option has explanatory text. The status menu uses **ABC** and solid EN/VI template badges with transparent letter cutouts. About shows VinaKey/version and repository/license links; the previous introductory credit paragraph is removed. Clipboard conversion is a compact native sheet with a standard Close/Convert footer. Automatic upstream OpenKey update checking is disconnected; the update command opens VinaKey Releases. No release updater/signing workflow was added.
 
-The universal VinaKey build and native checks pass, covering the merged controls, About navigation, compact sheet dimensions, ABC selection and rasterized badge fill/letter cutouts. This new VinaKey artifact has not been granted Accessibility access or computer-tested. Historical live results below apply to the named OpenKey artifacts only. The separate VinaKey identity leaves OpenKey permissions/preferences untouched. Milestone 5 remains deferred.
+The universal VinaKey build and native checks pass, covering the merged controls, About navigation, compact sheet dimensions, ABC selection and rasterized badge fill/letter cutouts. The VinaKey artifact at `/Users/hai/Downloads/VinaKey-milestone-4/VinaKey.app` was computer-tested after the user approved Accessibility access for its separate identity:
+
+- The branded permission gate blocked Settings until approval. The real About tab showed VinaKey/version without the removed credit paragraph.
+- All four tabs opened. General displayed the merged compatibility section and descriptions; Chromium toggle/restore passed. Typing switched Telex → VNI → Telex, and turning spelling off disabled restoration until spelling was restored.
+- The compact conversion sheet rendered complete pickers/help and standard footer buttons. Unicode → VNI Windows → Unicode selection, the no-text-clipboard alert, alert dismissal and Escape to close all passed. Conversion of actual clipboard text was not exercised; the user clipboard was not replaced.
+- A disposable TextEdit rule was added, changed to ABC and removed. Original OpenKey preferences matched their pre-test snapshot exactly. Tested VinaKey controls were restored (Telex, Unicode conversion, Chromium off, spelling on); the new app initialized its own preferences.
+- A clean restart retained Option-Z and showed an enabled event tap. The app remains running for review.
+
+The status dropdown/badge remains unavailable to this computer-control surface, so ABC menu switching, solid-badge appearance and menu/settings visual synchronization are not marked as live passes. Native menu/raster tests cover them. Physical typing and the complete remembered-language/app-switch sequence remain unverified on VinaKey. Historical live results below apply to their named OpenKey artifacts only. Milestone 5 remains deferred.
 
 ## Historical milestone 4: OpenKey native menu-bar app
 
