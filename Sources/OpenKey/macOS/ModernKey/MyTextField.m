@@ -31,7 +31,7 @@ extern void SetShortcutRecording(BOOL recording);
         [self setKeyboardFocusRingNeedsDisplayInRect: [self bounds]];
         
         if (!eventMonitor) {
-            eventMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSKeyDownMask handler:^(NSEvent *event) {
+            eventMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^(NSEvent *event) {
                 self.LastKeyCode = event.keyCode;
                 self.LastKeyChar = event.characters.UTF8String[0];
                 return event;

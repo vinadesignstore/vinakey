@@ -54,7 +54,8 @@ private struct ExistingControl: NSViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSView, context: Context) -> CGSize? {
         let fitting = nsView.fittingSize
         let intrinsic = nsView.intrinsicContentSize
-        return CGSize(width: proposal.width ?? max(intrinsic.width, fitting.width),
+        let width = nsView is NSSegmentedControl ? max(intrinsic.width, fitting.width) : proposal.width ?? max(intrinsic.width, fitting.width)
+        return CGSize(width: width,
                       height: intrinsic.height > 0 ? intrinsic.height : fitting.height)
     }
 }

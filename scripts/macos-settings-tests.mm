@@ -111,6 +111,9 @@ int main(void) { @autoreleasepool {
     [controller showPage:@"apps"]; assert(panes.selectedTabViewItemIndex==2);
     assert(fabs(NSMaxY(controller.window.frame)-top)<1); // panes resize downwards, title bar stays put
     assert(controller.window.contentViewController==panes && controller.window.attachedSheet==nil);
+    [controller.window.contentView layoutSubtreeIfNeeded];
+    NSSegmentedControl *rulesEditor=[controller valueForKey:@"rulesEdit"];
+    assert(rulesEditor.frame.size.width>0 && rulesEditor.frame.size.width<120);
     NSPopUpButton *rule=[[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     [rule addItemsWithTitles:@[@"English",@"Tiếng Việt",@"Nhớ lựa chọn"]];
     rule.identifier=@"org.openkey.test"; [rule selectItemAtIndex:0];
