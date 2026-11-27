@@ -223,7 +223,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
     [_inputKey setAccessibilityRole:NSAccessibilityButtonRole];
     [_inputKey setAccessibilityHelp:@"Bấm rồi nhấn tổ hợp phím. Delete để xóa, Escape để hủy."];
     [self group:@"" rows:@[
-        [self option:@"Mở cùng macOS" key:@"RunOnStartup" detail:@"Tự chạy VinaKey sau khi bạn đăng nhập."],
+        [self option:@"Mở cùng macOS" key:@"RunOnStartup" detail:@"Tự chạy VinaKey sau khi bạn đăng nhập (macOS 13 trở lên)."],
         [self row:@"Phím chuyển ngôn ngữ" detail:@"Bấm để ghi tổ hợp phím chuyển giữa ABC và tiếng Việt." control:_inputKey],
         [self option:@"Âm báo khi chuyển ngôn ngữ" key:@"SwitchBeep" detail:@"Phát âm thanh khi chuyển bằng phím tắt."]]];
     [self compatibilityOptions];
@@ -336,6 +336,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
     if (_encoding.indexOfSelectedItem!=vCodeTable) [_encoding selectItemAtIndex:MAX(0,MIN(4,vCodeTable))];
     for (NSString *key in _controls) { id control=_controls[key]; [control setState:[self optionValue:key]]; }
     _controls[@"RestoreIfInvalidWord"].enabled=vCheckSpelling;
+    if (@available(macOS 13.0,*)) {} else _controls[@"RunOnStartup"].enabled=NO;
     if (self.window.firstResponder!=_inputKey) [_inputKey displayShortcut:vSwitchKeyStatus];
     if (@available(macOS 13.0,*)) for (NSViewController *form in _formControllers) [(OKSettingsFormController *)form refreshControls];
 }
@@ -351,6 +352,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
         @"vOtherLanguage":[NSValue valueWithPointer:&vOtherLanguage]};
 }
 - (BOOL)optionValue:(NSString *)key {
+    if ([key isEqual:@"RunOnStartup"]) return [appDelegate runOnStartupEnabled];
     if ([key isEqual:@"SwitchBeep"]) return (vSwitchKeyStatus & 0x8000)!=0;
     NSValue *binding=[self optionBindings][key];
     return binding ? *(int *)binding.pointerValue!=0 : [[NSUserDefaults standardUserDefaults] boolForKey:key];

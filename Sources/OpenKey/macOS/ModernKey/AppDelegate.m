@@ -145,9 +145,8 @@ extern bool convertToolDontAlertWhenCompleted;
     
     // VinaKey releases are distributed separately from the upstream OpenKey updater.
     
-    //correct run on startup
-    NSInteger val = [[NSUserDefaults standardUserDefaults] integerForKey:@"RunOnStartup"];
-    [appDelegate setRunOnStartup:val];
+    // macOS owns login-item state; launching the app must not register it again.
+    [[NSUserDefaults standardUserDefaults] setBool:[self runOnStartupEnabled] forKey:@"RunOnStartup"];
 }
 
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
@@ -244,7 +243,7 @@ extern bool convertToolDontAlertWhenCompleted;
     if ([OpenKeyManager initEventTap]) OnActiveAppChanged();
 }
 - (void)quit:(id)sender { [NSApp terminate:nil]; }
-- (void)checkUpdate:(id)sender { [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/vinadesignstore/vinakey/releases"]]; }
+- (void)checkUpdate:(id)sender { [OpenKeyManager checkNewVersion:_settingsWC.window callbackFunc:nil]; }
 - (void)setQuickConvertString {} // Retained for legacy controller callers; conversion is a Tools command.
 
 -(void)loadDefaultConfig {
@@ -281,9 +280,27 @@ extern bool convertToolDontAlertWhenCompleted;
     [viewController fillData];
 }
 
+-(BOOL)runOnStartupEnabled {
+    if (@available(macOS 13.0,*)) return SMAppService.mainAppService.status==SMAppServiceStatusEnabled;
+    return NO;
+}
 -(void)setRunOnStartup:(BOOL)val {
-    CFStringRef appId = (__bridge CFStringRef)@"com.vinadesignstore.VinaKeyHelper";
-    SMLoginItemSetEnabled(appId, val);
+    NSError *error=nil;
+    BOOL success=NO;
+    if (@available(macOS 13.0,*)) {
+        SMAppService *service=SMAppService.mainAppService;
+        BOOL enabled=service.status==SMAppServiceStatusEnabled;
+        if (enabled==val && (val || service.status==SMAppServiceStatusNotRegistered)) success=YES;
+        else success=val ? [service registerAndReturnError:&error] : [service unregisterAndReturnError:&error];
+        if (val && service.status==SMAppServiceStatusRequiresApproval) {
+            success=NO;
+            error=[NSError errorWithDomain:@"VinaKey" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Cho phép VinaKey trong Cài đặt hệ thống → Cài đặt chung → Mục đăng nhập."}];
+        }
+    } else {
+        error=[NSError errorWithDomain:@"VinaKey" code:2 userInfo:@{NSLocalizedDescriptionKey:@"Tính năng này cần macOS 13 trở lên. Trên macOS 12, thêm VinaKey vào Mục đăng nhập trong Cài đặt hệ thống."}];
+    }
+    [[NSUserDefaults standardUserDefaults] setBool:[self runOnStartupEnabled] forKey:@"RunOnStartup"];
+    if (!success) [OpenKeyManager showMessage:_settingsWC.window message:@"Không thể thay đổi mục đăng nhập" subMsg:error.localizedDescription ?: @"Hãy kiểm tra Mục đăng nhập trong Cài đặt hệ thống."];
 }
 
 -(void)setGrayIcon:(BOOL)val {

@@ -1,5 +1,6 @@
 // Exercise production AppDelegate menu actions without a keyboard hook or user preferences.
 #import <objc/runtime.h>
+#import <ServiceManagement/ServiceManagement.h>
 #import "../Sources/OpenKey/macOS/ModernKey/AppDelegate.h"
 #import "../Sources/OpenKey/macOS/ModernKey/SettingsWindowController.h"
 #import "../Sources/OpenKey/macOS/ModernKey/OpenKeyManager.h"
@@ -11,7 +12,27 @@ ViewController *viewController=nil;
 bool convertToolDontAlertWhenCompleted=false;
 static NSUserDefaults *prefs;
 static BOOL trusted=YES,active=YES;
-static int saves=0,settingsOpened=0;
+static int saves=0,settingsOpened=0,loginErrors=0;
+@interface FakeLoginService : NSObject
+@property NSInteger status;
+@property BOOL fails,approval;
+@property int registrations;
+@end
+@implementation FakeLoginService
+-(BOOL)registerAndReturnError:(NSError **)error {
+    self.registrations++;
+    if (self.fails) { *error=[NSError errorWithDomain:@"test" code:1 userInfo:nil]; return NO; }
+    self.status=self.approval ? 2 : 1; return YES;
+}
+-(BOOL)unregisterAndReturnError:(NSError **)error { self.status=0; return YES; }
+@end
+static FakeLoginService *loginService;
+@interface SMAppService (LoginTests)
++(id)testMainAppService;
+@end
+@implementation SMAppService (LoginTests)
++(id)testMainAppService { return loginService; }
+@end
 extern "C" {
 void OnInputMethodChanged(void) { ++saves; }
 void OnTableCodeChange(void) {}
@@ -53,6 +74,7 @@ BOOL MJAccessibilityIsEnabled(void) { return trusted; }
 @implementation SettingsWindowController
 @end
 @implementation OpenKeyManager
++(void)showMessage:(NSWindow *)window message:(NSString *)message subMsg:(NSString *)detail { loginErrors++; }
 +(BOOL)isActive { return active; }
 +(BOOL)initEventTap { return active=trusted; }
 @end
@@ -111,7 +133,19 @@ int main() { @autoreleasepool {
     assert(settings.action==@selector(onControlPanelSelected));
     NSMenu *menu=[delegate valueForKey:@"theMenu"];
     assert(menu.numberOfItems==12 && [menu itemWithTitle:@"Gõ tắt…"]==nil);
+    if (@available(macOS 13.0,*)) {
+        loginService=[FakeLoginService new];
+        method_exchangeImplementations(class_getClassMethod(SMAppService.class,@selector(mainAppService)),class_getClassMethod(SMAppService.class,@selector(testMainAppService)));
+        assert(![delegate runOnStartupEnabled]);
+        [delegate setRunOnStartup:YES]; assert([delegate runOnStartupEnabled] && [prefs boolForKey:@"RunOnStartup"]);
+        [delegate setRunOnStartup:YES]; assert(loginService.registrations==1);
+        [delegate setRunOnStartup:NO]; assert(![delegate runOnStartupEnabled] && ![prefs boolForKey:@"RunOnStartup"]);
+        loginService.fails=YES; [delegate setRunOnStartup:YES]; assert(loginErrors==1 && ![prefs boolForKey:@"RunOnStartup"]);
+        loginService.fails=NO; loginService.approval=YES; [delegate setRunOnStartup:YES]; assert(loginErrors==2 && ![prefs boolForKey:@"RunOnStartup"]);
+        [delegate setRunOnStartup:NO]; assert(loginService.status==0);
+        method_exchangeImplementations(class_getClassMethod(SMAppService.class,@selector(mainAppService)),class_getClassMethod(SMAppService.class,@selector(testMainAppService)));
+    }
     [[NSStatusBar systemStatusBar] removeStatusItem:[delegate valueForKey:@"statusItem"]];
     [prefs removePersistentDomainForName:suite];
-    puts("Menu: all typing sources, active badge/name/checkmarks, saved mode, fixed rules, permission gate and Command-Comma passed");
+    puts("Menu/login: registration, failure/approval state, all typing sources, active badge/name/checkmarks, saved mode, fixed rules, permission gate and Command-Comma passed");
 } }

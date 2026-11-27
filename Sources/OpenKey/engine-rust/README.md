@@ -71,6 +71,16 @@ Additional milestone 3 computer checks:
 VNI, Unicode, Option-Z, smart switching and browser-workaround settings were restored. The live-authorized app was `/Users/hai/Downloads/OpenKey-milestone-3/OpenKey.app`; it predates the final explicit-pause-on-wake adjustment. That adjustment has native lifecycle coverage, but the final review artifact still needs a live run. Those results remain a draft checkpoint, not a merge-ready live-validation claim.
 
 
+## Milestone 5 local release candidate
+
+The fork now uses version 0.1.0 (1), deployment target macOS 12 and hardened runtime. The upstream development team is removed. Login-at-startup uses SMAppService.mainAppService on macOS 13+, reports registration failures/required approval and reads the OS status instead of trusting a saved toggle. App launch does not silently register a login item. On macOS 12 the toggle is disabled; users can add the app through system Login Items.
+
+The inherited network updater and replacement-helper code are removed. All update commands open VinaKey Releases for an explicit download; there is no automatic installer. `scripts/package-macos.py` builds a staged universal app and produces an archive, checksum and manifest. Preview mode uses an ad-hoc signature. Release mode requires an installed Developer ID Application identity and Keychain notary profile, secure timestamp/hardened runtime, Accepted notarization, stapling and Gatekeeper assessment before producing a release archive. See `RELEASE.md`.
+
+Native regression checks cover login enable/disable, idempotent registration, failed registration and required approval without changing real system login items. The existing engine/input/settings/menu checks pass. A macOS CI workflow performs the same checks and packages a clearly labelled local preview.
+
+No valid Developer ID identity is installed. The user selected a local candidate plus signing instructions. Actual login/logout, signed upgrades, notarization and Gatekeeper acceptance remain unverified; no public binary release or tag has been created. Earlier computer-use results below apply to the prior artifact, not this candidate.
+
 ## VinaKey fork checkpoint
 
 The macOS product is now **VinaKey** (`com.vinadesignstore.vinakey`), published separately at `vinadesignstore/vinakey`. Source paths, engine ABI and Xcode scheme retain their historical names; Windows/Linux remain inherited OpenKey source. Original copyright/license notices are preserved in source, LICENSE and NOTICE.md.

@@ -522,7 +522,7 @@ extern int vPerformLayoutCompat;
 }
 
 - (IBAction)onSourceCode:(id)sender {
-  [[NSWorkspace sharedWorkspace] openURL: [NSURL URLWithString:@"https://github.com/tuyenvm/OpenKey"]];
+  [[NSWorkspace sharedWorkspace] openURL: [NSURL URLWithString:@"https://github.com/vinadesignstore/vinakey"]];
 }
 
 - (IBAction)onCheckNewVersionButton:(id)sender {

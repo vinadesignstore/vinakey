@@ -32,6 +32,7 @@ void OnSpellCheckingChanged(void) { vSetCheckSpelling(); }
 -(void)onInputTypeSelectedIndex:(int)index { vInputType=index; }
 -(void)onCodeTableChanged:(int)index { vCodeTable=index; }
 -(void)setRunOnStartup:(BOOL)value {}
+-(BOOL)runOnStartupEnabled { return NO; }
 -(void)setGrayIcon:(BOOL)value {}
 -(void)showIconOnDock:(BOOL)value {}
 -(void)loadDefaultConfig {}
