@@ -107,14 +107,18 @@ int main(void) { @autoreleasepool {
     [controller showPage:@"general"];
     [controls[@"SwitchBeep"] setState:NSControlStateValueOn]; [controller changeOption:controls[@"SwitchBeep"]];
     [controller onShortcutRecorded:0x7A000206]; assert(vSwitchKeyStatus==0x7A008206);
+    CGFloat top=NSMaxY(controller.window.frame);
     [controller showPage:@"apps"]; assert(panes.selectedTabViewItemIndex==2);
+    assert(fabs(NSMaxY(controller.window.frame)-top)<1); // panes resize downwards, title bar stays put
     assert(controller.window.contentViewController==panes && controller.window.attachedSheet==nil);
     NSPopUpButton *rule=[[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     [rule addItemsWithTitles:@[@"English",@"Tiếng Việt",@"Nhớ lựa chọn"]];
     rule.identifier=@"org.openkey.test"; [rule selectItemAtIndex:0];
     [controller changeRule:rule]; [controller reloadRules];
     assert([testDefaults dictionaryForKey:@"AppLanguageRules"].count==1);
+    assert(![[controller valueForKey:@"rulesEdit"] isEnabledForSegment:1]);
     [[controller valueForKey:@"rulesTable"] selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+    assert([[controller valueForKey:@"rulesEdit"] isEnabledForSegment:1]);
     [controller removeApp:nil]; assert([testDefaults dictionaryForKey:@"AppLanguageRules"].count==0);
     [controller showConversion];
     NSWindow *sheet=[[controller valueForKey:@"utilityWC"] window];
@@ -129,5 +133,5 @@ int main(void) { @autoreleasepool {
     paused=YES; trusted=YES; [controller refresh]; assert(!active && paused);
     [controller close];
     [testDefaults removePersistentDomainForName:suite];
-    puts("Settings: four panes, restored typing/compatibility controls, permission gate, shortcut recorder, app rules and conversion passed");
+    puts("Settings: four panes, restored typing/compatibility controls, permission gate, shortcut recorder, app rules (+/− editing) and conversion passed");
 } }

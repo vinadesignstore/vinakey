@@ -6,6 +6,7 @@
 #import "Engine.h"
 #import "ConvertTool.h"
 #import <Carbon/Carbon.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 extern AppDelegate *appDelegate;
 extern int vFixChromiumBrowser, vSendKeyStepByStep, vPerformLayoutCompat;
@@ -19,14 +20,37 @@ extern "C" void OnSpellCheckingChanged(void);
 - (BOOL)isFlipped { return YES; }
 @end
 
+// Native settings windows keep the title bar still and grow or shrink downwards.
+// setContentSize: keeps the bottom edge instead, so the whole window jumped on every pane change.
+static void ResizeContentKeepingTop(NSWindow *window, NSSize size) {
+    NSSize current = window.contentView.frame.size;
+    if (NSEqualSizes(current, size)) return;
+    NSRect frame = window.frame;
+    CGFloat dh = size.height - current.height;
+    frame.size.width += size.width - current.width; frame.size.height += dh; frame.origin.y -= dh;
+    [window setFrame:frame display:YES animate:window.isVisible];
+}
+
 @interface OKSettingsTabs : NSTabViewController
 @end
 @implementation OKSettingsTabs
 - (void)tabView:(NSTabView *)tabView didSelectTabViewItem:(NSTabViewItem *)item {
     [super tabView:tabView didSelectTabViewItem:item];
     self.view.window.title = item.label;
-    if (self.view.window) [self.view.window setContentSize:item.viewController.preferredContentSize];
+    if (self.view.window) ResizeContentKeepingTop(self.view.window, item.viewController.preferredContentSize);
     [[NSUserDefaults standardUserDefaults] setObject:item.identifier forKey:@"SettingsPane"];
+}
+@end
+
+// Delete and Forward Delete remove the selected rule, as in other macOS lists.
+@interface OKRulesTable : NSTableView
+@end
+@implementation OKRulesTable
+- (void)keyDown:(NSEvent *)event {
+    unichar key = event.charactersIgnoringModifiers.length ? [event.charactersIgnoringModifiers characterAtIndex:0] : 0;
+    if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) && self.selectedRow >= 0)
+        [NSApp sendAction:NSSelectorFromString(@"removeApp:") to:self.delegate from:self];
+    else [super keyDown:event];
 }
 @end
 
@@ -41,6 +65,7 @@ extern "C" void OnSpellCheckingChanged(void);
     NSPopUpButton *_inputType, *_encoding, *_fromCode, *_toCode;
     MyTextField *_inputKey;
     NSTableView *_rulesTable;
+    NSSegmentedControl *_rulesEdit;
     NSArray<NSString *> *_ruleIDs;
     NSTimer *_timer;
     BOOL _wasTrusted, _gateVisible, _shown;
@@ -110,7 +135,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
         [section addArrangedSubview:heading];
     }
     NSBox *box = [NSBox new];
-    box.boxType = NSBoxCustom; box.borderType = NSNoBorder;
+    box.boxType = NSBoxCustom; box.borderWidth = 0;
     box.cornerRadius = 10; box.fillColor = [NSColor.labelColor colorWithAlphaComponent:0.045];
     box.contentViewMargins = NSZeroSize;
     NSStackView *body = [self stack]; body.spacing = 0; body.alignment = NSLayoutAttributeCenterX;
@@ -172,6 +197,8 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
     self = [super initWithWindow:window]; if (!self) return nil;
     window.delegate=self; window.releasedWhenClosed=NO; [window center];
+    if (@available(macOS 11.0,*)) window.toolbarStyle=NSWindowToolbarStylePreference;
+    window.frameAutosaveName=@"VinaKeySettings";
     _controls=[NSMutableDictionary new]; _formControllers=[NSMutableArray new];
     _panes=[OKSettingsTabs new]; _panes.tabStyle=NSTabViewControllerTabStyleToolbar;
     NSString *saved=[[NSUserDefaults standardUserDefaults] stringForKey:@"SettingsPane"];
@@ -323,12 +350,12 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
         if (_utilityWC.window.sheetParent) [self.window endSheet:_utilityWC.window];
         [_utilityWC close];
         _gate=[self permissionGate]; self.window.toolbar=nil; self.window.contentViewController=_gate;
-        self.window.title=@"Thiết lập VinaKey"; [self.window setContentSize:NSMakeSize(640,380)]; _gateVisible=YES;
+        self.window.title=@"Thiết lập VinaKey"; ResizeContentKeepingTop(self.window,NSMakeSize(640,380)); _gateVisible=YES;
     } else if (trusted && (_gateVisible || !self.window.contentViewController)) {
         BOOL dismiss=_gateVisible && _shown;
         self.window.contentViewController=_panes; (void)_panes.view;
         self.window.title=_panes.tabViewItems[_panes.selectedTabViewItemIndex].label;
-        [self.window setContentSize:_panes.tabViewItems[_panes.selectedTabViewItemIndex].viewController.preferredContentSize]; _gate=nil; _gateVisible=NO;
+        ResizeContentKeepingTop(self.window,_panes.tabViewItems[_panes.selectedTabViewItemIndex].viewController.preferredContentSize); _gate=nil; _gateVisible=NO;
         if (dismiss) [self close];
     }
     _wasTrusted=trusted;
@@ -416,8 +443,14 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
         [self option:@"Nhớ bảng mã theo ứng dụng" key:@"vRememberCode" detail:@"Giữ bảng mã riêng cho từng ứng dụng thay vì dùng chung."]]];
     _rulesTable=[self tableWithColumns:@[@"Ứng dụng",@"Ngôn ngữ"] identifiers:@[@"app",@"rule"] height:200];
     [self reloadRules];
-    [_content addArrangedSubview:[NSStackView stackViewWithViews:@[[self button:@"Thêm…" action:@selector(addApp:)],
-        [self button:@"Xóa quy tắc" action:@selector(removeApp:)]]]];
+    NSImage *add=[[NSImage imageNamed:NSImageNameAddTemplate] copy], *remove=[[NSImage imageNamed:NSImageNameRemoveTemplate] copy];
+    add.accessibilityDescription=@"Thêm ứng dụng"; remove.accessibilityDescription=@"Xóa quy tắc";
+    _rulesEdit=[NSSegmentedControl segmentedControlWithImages:@[add,remove] trackingMode:NSSegmentSwitchTrackingMomentary
+        target:self action:@selector(editRules:)];
+    _rulesEdit.segmentStyle=NSSegmentStyleSmallSquare;
+    [_rulesEdit setToolTip:@"Thêm ứng dụng" forSegment:0]; [_rulesEdit setToolTip:@"Xóa quy tắc" forSegment:1];
+    [_rulesEdit setEnabled:NO forSegment:1];
+    [_content addArrangedSubview:_rulesEdit];
     [self note:@"Quy tắc cố định được ưu tiên hơn phím chuyển ngôn ngữ."];
 }
 - (void)conversionPage {
@@ -431,7 +464,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
     NSScrollView *scroll = [NSScrollView new]; scroll.hasVerticalScroller = YES;
     scroll.borderType = NSNoBorder; scroll.drawsBackground = NO;
     [scroll.heightAnchor constraintEqualToConstant:height].active = YES;
-    NSTableView *table = [NSTableView new]; table.rowHeight = 34;
+    NSTableView *table = [OKRulesTable new]; table.rowHeight = 34;
     table.usesAlternatingRowBackgroundColors = NO;
     if (@available(macOS 11.0, *)) table.style = NSTableViewStyleInset;
     table.dataSource = self; table.delegate = self;
@@ -451,18 +484,33 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
     NSString *bundleID=_ruleIDs[row];
     if ([column.identifier isEqual:@"app"]) {
         NSURL *url=[[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:bundleID];
-        return [NSTextField labelWithString:url ? [[NSFileManager defaultManager] displayNameAtPath:url.path] : bundleID];
+        NSImage *icon=url ? [[NSWorkspace sharedWorkspace] iconForFile:url.path] : [[NSWorkspace sharedWorkspace] iconForContentType:UTTypeApplicationBundle];
+        NSImageView *image=[NSImageView imageViewWithImage:icon];
+        [image.widthAnchor constraintEqualToConstant:20].active=YES; [image.heightAnchor constraintEqualToConstant:20].active=YES;
+        NSTextField *name=[NSTextField labelWithString:[self appName:bundleID]];
+        name.lineBreakMode=NSLineBreakByTruncatingTail;
+        NSStackView *cell=[NSStackView stackViewWithViews:@[image,name]]; cell.spacing=8;
+        return cell;
     }
     NSPopUpButton *popup=[self popup:@[@"ABC",@"Tiếng Việt",@"Nhớ lựa chọn"] action:@selector(changeRule:)];
     id value=[self rules][bundleID];
     NSInteger selected=[value isKindOfClass:NSNumber.class] ? [value integerValue] : 2;
     [popup selectItemAtIndex:MAX(0,MIN(2,selected))]; popup.identifier=bundleID;
-    [popup setAccessibilityLabel:[NSString stringWithFormat:@"Quy tắc %@",bundleID]]; return popup;
+    [popup setAccessibilityLabel:[NSString stringWithFormat:@"Ngôn ngữ cho %@",[self appName:bundleID]]]; return popup;
+}
+- (NSString *)appName:(NSString *)bundleID {
+    NSURL *url=[[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:bundleID];
+    return url ? [[NSFileManager defaultManager] displayNameAtPath:url.path] : bundleID;
+}
+- (void)tableViewSelectionDidChange:(NSNotification *)note { [_rulesEdit setEnabled:_rulesTable.selectedRow>=0 forSegment:1]; }
+- (void)editRules:(NSSegmentedControl *)sender {
+    if (sender.selectedSegment==0) [self addApp:sender]; else [self removeApp:sender];
 }
 - (NSDictionary *)rules { return [[NSUserDefaults standardUserDefaults] dictionaryForKey:@"AppLanguageRules"] ?: @{}; }
 - (void)reloadRules {
     _ruleIDs = [[[self rules] allKeys] sortedArrayUsingSelector:@selector(compare:)];
     [_rulesTable reloadData];
+    [_rulesEdit setEnabled:_rulesTable.selectedRow>=0 forSegment:1];
 }
 - (void)changeRule:(NSPopUpButton *)sender {
     NSMutableDictionary *rules = [[self rules] mutableCopy];
@@ -472,7 +520,7 @@ static NSTextField *Text(NSString *text, CGFloat size, BOOL secondary) {
 }
 - (void)addApp:(id)sender {
     NSOpenPanel *panel = [NSOpenPanel openPanel];
-    panel.allowedFileTypes = @[@"app"]; panel.allowsMultipleSelection = NO;
+    panel.allowedContentTypes = @[UTTypeApplicationBundle]; panel.allowsMultipleSelection = NO;
     panel.canChooseDirectories = NO; panel.directoryURL = [NSURL fileURLWithPath:@"/Applications"];
     [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
         if (result != NSModalResponseOK) return;

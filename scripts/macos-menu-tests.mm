@@ -8,7 +8,6 @@
 #import "../Sources/OpenKey/engine/Engine.h"
 #include <cassert>
 extern int vSwitchKeyStatus;
-ViewController *viewController=nil;
 bool convertToolDontAlertWhenCompleted=false;
 static NSUserDefaults *prefs;
 static BOOL trusted=YES,active=YES;
@@ -131,6 +130,8 @@ int main() { @autoreleasepool {
     NSMenuItem *settings=[application itemWithTitle:@"Cài đặt…"];
     assert([settings.keyEquivalent isEqual:@","] && settings.target==delegate);
     assert(settings.action==@selector(onControlPanelSelected));
+    NSMenuItem *close=[NSApp.windowsMenu itemWithTitle:@"Đóng"];
+    assert(close.action==@selector(performClose:) && [close.keyEquivalent isEqual:@"w"] && close.target==nil);
     NSMenu *menu=[delegate valueForKey:@"theMenu"];
     assert(menu.numberOfItems==12 && [menu itemWithTitle:@"Gõ tắt…"]==nil);
     if (@available(macOS 13.0,*)) {
@@ -147,5 +148,5 @@ int main() { @autoreleasepool {
     }
     [[NSStatusBar systemStatusBar] removeStatusItem:[delegate valueForKey:@"statusItem"]];
     [prefs removePersistentDomainForName:suite];
-    puts("Menu/login: registration, failure/approval state, all typing sources, active badge/name/checkmarks, saved mode, fixed rules, permission gate and Command-Comma passed");
+    puts("Menu/login: registration, failure/approval state, all typing sources, active badge/name/checkmarks, saved mode, fixed rules, permission gate, Command-Comma and Command-W passed");
 } }

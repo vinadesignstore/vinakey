@@ -10,7 +10,6 @@
 #import <Foundation/Foundation.h>
 #import "Engine.h"
 #import "AppDelegate.h"
-#import "ViewController.h"
 #import "OpenKeyManager.h"
 #import "InputCompatibility.h"
 
@@ -42,7 +41,6 @@ NSDictionary *keyStringToKeyCodeMap = @{
     @",": @43, @"<": @43, @".": @47, @">": @47, @"/": @44, @"?": @44
 };
 
-extern ViewController* viewController;
 
 extern AppDelegate* appDelegate;
 extern int vSendKeyStepByStep;

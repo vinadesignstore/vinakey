@@ -26,7 +26,7 @@ xcrun swiftc -swift-version 5 -parse-as-library -emit-object -module-name OpenKe
 xcrun swiftc -target "$(uname -m)-apple-macos12.0" \
     "$TEST_DIR/settings.o" "$TEST_DIR/bridge.o" "$TEST_DIR/keyfield.o" "$TEST_DIR/form.o" \
     Sources/OpenKey/engine-rust/target/release/libopenkey_engine.a \
-    -framework Cocoa -framework Carbon -lc++ -liconv -o "$TEST_DIR/settings"
+    -framework Cocoa -framework Carbon -framework UniformTypeIdentifiers -lc++ -liconv -o "$TEST_DIR/settings"
 "$TEST_DIR/settings"
 
 clang -fobjc-arc -Wno-deprecated-declarations -c Sources/OpenKey/macOS/ModernKey/AppDelegate.m -o "$TEST_DIR/delegate.o"

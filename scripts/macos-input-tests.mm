@@ -37,7 +37,6 @@ extern "C" void TestCGEventTapPostEvent(CGEventTapProxy,CGEventRef);
 #undef CGEventTapPostEvent
 #include <cassert>
 
-ViewController *viewController=nil;
 AppDelegate *appDelegate=nil;
 int vLanguage=1,vInputType=1,vCodeTable=0,vFreeMark=0,vCheckSpelling=1;
 int vSwitchKeyStatus=0xFE0000FE,vUseModernOrthography=0,vQuickTelex=0,vRestoreIfWrongSpelling=0;

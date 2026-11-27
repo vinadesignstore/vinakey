@@ -2,6 +2,12 @@
 
 Milestone checkpoints and live/computer-use test results, kept as written at each checkpoint. Automated checks are described in [README.md](README.md).
 
+## Current status
+
+This supersedes the "not started" and "deferred" milestone 5 notes in older checkpoints below. Updater repair and the login-item migration are done (see the milestone 5 section). Signing and notarization are implemented in `scripts/package-macos.py` but not run, because no Developer ID identity is available yet, so only ad-hoc signed local previews exist. Physical typing in TextEdit for VNI `A6`/`VIE65T`/`a16`/`a66` and Telex `a]w` passed on the `claude/brave-einstein-k5dl53` build. Spotlight, secure input, remote desktop, the status menu by hand and macOS 12 runtime remain unverified.
+
+A native-conventions pass added a Window menu (Command-W/M), Redo, Hide Others and Show All. Settings panes now resize downwards with animation under a fixed title bar, and the window remembers its position and uses the preference toolbar style. The app-rules list shows app icons, edits with +/− buttons and Delete, and gives VoiceOver app names. The app declares Vietnamese as its only localization so AppKit-supplied text matches. The storyboard, the legacy OpenKey view controllers and images, the OpenKeyHelper sources, the stale helper/updater schemes, EventKit and the unused Apple Events usage string are removed, and `main.m` installs the app delegate directly. Native checks and a warning-free Release build pass. The resize animation, AppKit text in Vietnamese and the +/− list still need a visual check, and the app icon is still the bare legacy "V".
+
 ## Review checkpoint
 
 The draft includes the Rust engine, milestone 3 reliability work and milestone 4 menu-bar/settings simplification. Milestone 5 has not started. Updater repair, login-item API migration, signing/notarization and release verification remain deferred. Automated native checks do not establish physical typing compatibility.

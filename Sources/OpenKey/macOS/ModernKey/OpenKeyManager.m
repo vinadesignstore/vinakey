@@ -172,8 +172,7 @@ static NSTimer *healthTimer;
 +(void)showMessage:(NSWindow*)window message:(NSString*)msg subMsg:(NSString*)subMsg {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:msg];
-    [alert setInformativeText:subMsg];
-    [alert addButtonWithTitle:@"OK"];
+    [alert setInformativeText:subMsg]; // AppKit supplies its own localized OK button.
     if (window) {
         [alert beginSheetModalForWindow:window completionHandler:^(NSModalResponse returnCode) {
         }];
